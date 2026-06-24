@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import PasswordField from "../components/ui/PasswordField"
 import { useAuth } from "../context/AuthContext"
 
 const RegisterPage = () => {
@@ -18,15 +19,12 @@ const RegisterPage = () => {
             await register({ username, email, password })
             navigate("/login")
         } catch (error) {
-            
-            console.log("BACKEND ERROR:", error.response?.data)
-
-        setError(
-            error.response?.data?.message ||
-            "Unable to create account. Please try again."
-        )
+            setError(
+                error.response?.data?.message ||
+                "Unable to create account. Please try again."
+            )
+        }
     }
-}
 
     return (
         <main>
@@ -55,16 +53,14 @@ const RegisterPage = () => {
                     />
                 </div>
 
-                <div>
-                    <label htmlFor="password">Password</label>
-                    <input
-                        id="password"
-                        type="password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        required
-                    />
-                </div>
+                <PasswordField
+                    id="password"
+                    label="Password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="new-password"
+                    minLength="8"
+                />
 
                 {error && <p role="alert">{error}</p>}
 

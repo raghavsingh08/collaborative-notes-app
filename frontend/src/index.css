@@ -79,6 +79,7 @@ body {
     margin: 0;
     min-width: 320px;
     min-height: 100vh;
+    overflow-x: hidden;
     background:
         linear-gradient(180deg, var(--body-gradient-start), var(--body-gradient-end)),
         var(--bg);
@@ -112,6 +113,55 @@ textarea {
     background: var(--input-bg);
     outline: none;
     transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.password-field-group {
+    display: grid;
+    gap: 8px;
+}
+
+.password-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--input-bg);
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.password-field:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--ring);
+}
+
+.password-field input {
+    height: 44px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.password-field input:focus {
+    box-shadow: none;
+}
+
+.password-toggle {
+    min-width: 64px;
+    min-height: 36px;
+    margin-right: 4px;
+    border: 0;
+    border-radius: 8px;
+    color: var(--muted-strong);
+    background: transparent;
+    font-size: 0.84rem;
+    font-weight: 800;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+    color: var(--text);
+    background: var(--surface-soft);
 }
 
 input:focus,
@@ -149,7 +199,7 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) in
     padding: 0 12px;
 }
 
-main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) button {
+main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) button:not(.password-toggle) {
     min-height: 44px;
     border: 0;
     border-radius: 10px;
@@ -1566,5 +1616,181 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
 
     .feature-card {
         min-height: 0;
+    }
+}
+
+@media (max-width: 520px) {
+    main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) {
+        width: min(100% - 24px, 440px);
+        margin: 28px auto;
+        padding: 20px;
+        border-radius: 14px;
+    }
+
+    main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) h1 {
+        font-size: 1.75rem;
+    }
+
+    input,
+    textarea,
+    .password-field input {
+        font-size: 1rem;
+    }
+
+    .primary-button,
+    .secondary-button,
+    .danger-button,
+    .ghost-button,
+    .icon-button,
+    .create-note-control button,
+    .password-toggle {
+        min-height: 44px;
+    }
+
+    .home-nav {
+        position: relative;
+        inset: auto;
+        margin-bottom: 34px;
+    }
+
+    .home-brand {
+        padding-left: 0;
+    }
+
+    .home-nav > div {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+    }
+
+    .hero-copy {
+        padding-top: 0;
+    }
+
+    .hero-description {
+        font-size: 1rem;
+    }
+
+    .hero-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .hero-preview {
+        display: none;
+    }
+
+    .home-section {
+        width: min(100% - 28px, 1180px);
+        padding: 48px 0;
+    }
+
+    .section-heading h2 {
+        font-size: 2rem;
+    }
+
+    .sidebar {
+        gap: 16px;
+        padding: 16px;
+    }
+
+    .brand-row {
+        align-items: flex-start;
+    }
+
+    .brand-row h1 {
+        max-width: 220px;
+    }
+
+    .dashboard-header {
+        gap: 14px;
+        margin-bottom: 18px;
+    }
+
+    .note-row {
+        min-height: 0;
+        padding: 16px;
+    }
+
+    .badge {
+        align-self: flex-start;
+    }
+
+    .empty-state {
+        padding: 24px;
+    }
+
+    .editor-toolbar {
+        gap: 12px;
+    }
+
+    .toolbar-left,
+    .toolbar-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .toolbar-actions > button,
+    .toolbar-left > button,
+    .save-indicator {
+        width: 100%;
+    }
+
+    .save-indicator {
+        justify-content: center;
+    }
+
+    .document-surface {
+        padding: 20px;
+    }
+
+    .title-input {
+        font-size: 2rem;
+    }
+
+    .collaboration-panel {
+        border-radius: 16px;
+    }
+
+    .modal-backdrop {
+        align-items: end;
+        padding: 12px;
+    }
+
+    .modal-card {
+        width: 100%;
+        max-height: calc(100vh - 24px);
+        border-radius: 18px;
+        padding: 18px;
+    }
+
+    .modal-actions,
+    .share-form {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .settings-shell {
+        padding: 14px;
+    }
+
+    .settings-header h1 {
+        font-size: 2rem;
+    }
+
+    .settings-card {
+        padding: 14px;
+    }
+
+    .current-profile {
+        gap: 10px;
+    }
+
+    .theme-toggle {
+        width: 100%;
+    }
+
+    .password-field {
+        grid-template-columns: minmax(0, 1fr) 72px;
     }
 }

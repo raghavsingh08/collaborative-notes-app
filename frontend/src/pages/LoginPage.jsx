@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import PasswordField from "../components/ui/PasswordField"
 import { useAuth } from "../context/AuthContext"
 
 const LoginPage = () => {
@@ -41,16 +42,13 @@ const LoginPage = () => {
                     />
                 </div>
 
-                <div>
-                    <label htmlFor="password">Password</label>
-                    <input
-                        id="password"
-                        type="password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        required
-                    />
-                </div>
+                <PasswordField
+                    id="password"
+                    label="Password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="current-password"
+                />
 
                 {error && <p role="alert">{error}</p>}
 

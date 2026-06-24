@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { updatePassword, updateProfile } from "../api/auth.api"
 import { ErrorState } from "../components/ui/AppUI"
+import PasswordField from "../components/ui/PasswordField"
 import { useAuth } from "../context/AuthContext"
 import { useTheme } from "../context/ThemeContext"
 
@@ -215,23 +216,21 @@ const SettingsPage = () => {
                         <h2>Change password</h2>
                     </div>
 
-                    <label htmlFor="old-password">Current password</label>
-                    <input
+                    <PasswordField
                         id="old-password"
-                        type="password"
+                        label="Current password"
                         value={oldPassword}
                         onChange={(event) => setOldPassword(event.target.value)}
-                        required
+                        autoComplete="current-password"
                     />
 
-                    <label htmlFor="new-password">New password</label>
-                    <input
+                    <PasswordField
                         id="new-password"
-                        type="password"
+                        label="New password"
                         value={newPassword}
                         onChange={(event) => setNewPassword(event.target.value)}
+                        autoComplete="new-password"
                         minLength="8"
-                        required
                     />
                     <ErrorState message={passwordError} />
                     {passwordMessage && <div className="notice notice-success" role="status">{passwordMessage}</div>}

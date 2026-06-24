@@ -96,6 +96,24 @@ const registerNoteSocketHandlers = (io, socket) => {
         }
     })
 
+    socket.on("note:typing", async ({ noteId } = {}) => {
+        try {
+            const note = await findAccessibleNote(noteId, socket.user._id)
+
+            if (!note) {
+                socket.emit("note:error", "Note not found or access denied")
+                return
+            }
+
+            socket.to(getNoteRoom(noteId)).emit("note:typing", {
+                noteId,
+                user: getUserPayload(socket.user)
+            })
+        } catch {
+            socket.emit("note:error", "Unable to send typing status")
+        }
+    })
+
     socket.on("note:save", async ({ noteId, title, content } = {}) => {
         try {
             const note = await findAccessibleNote(noteId, socket.user._id)

@@ -36,9 +36,11 @@ const NoteEditorPage = () => {
 
     const {
         activeUsers,
+        typingUsers,
         socketError,
         emitUpdate,
-        emitSave
+        emitSave,
+        emitTyping
     } = useNoteSocket(noteId, handleRemoteUpdate)
 
     useEffect(() => {
@@ -88,6 +90,7 @@ const NoteEditorPage = () => {
         setTitle(nextTitle)
         setSaveStatus("Editing")
         emitUpdate(nextTitle, content)
+        emitTyping()
     }
 
     const handleContentChange = (event) => {
@@ -96,6 +99,7 @@ const NoteEditorPage = () => {
         setContent(nextContent)
         setSaveStatus("Editing")
         emitUpdate(title, nextContent)
+        emitTyping()
     }
 
     const handleSave = async () => {
@@ -197,6 +201,16 @@ const NoteEditorPage = () => {
                         <p className="eyebrow">Live session</p>
                         <h2>Collaborators</h2>
                     </div>
+
+                    {typingUsers.length > 0 && (
+                        <div className="typing-indicators" role="status" aria-live="polite">
+                            {typingUsers.map((typingUser) => (
+                                <p key={typingUser._id || typingUser.id || typingUser.email || typingUser.username}>
+                                    {getDisplayName(typingUser)} is typing...
+                                </p>
+                            ))}
+                        </div>
+                    )}
 
                     {activeUsers.length === 0 ? (
                         <EmptyState

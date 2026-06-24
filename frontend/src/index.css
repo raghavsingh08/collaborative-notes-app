@@ -799,6 +799,22 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
     padding: 18px;
 }
 
+.typing-indicators {
+    display: grid;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 12px;
+    color: var(--accent);
+    background: var(--blue-soft);
+}
+
+.typing-indicators p {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+
 .avatar-stack {
     display: flex;
     align-items: center;

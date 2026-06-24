@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import socket from "../api/socket"
 
-const useNoteSocket = (noteId, onRemoteUpdate) => {
+const useNoteSocket = (noteId, onRemoteUpdate, onNoteSaved) => {
     const [activeUsers, setActiveUsers] = useState([])
     const [typingUsers, setTypingUsers] = useState([])
     const [socketError, setSocketError] = useState("")
@@ -20,6 +20,7 @@ const useNoteSocket = (noteId, onRemoteUpdate) => {
 
         const handleNoteSaved = (payload) => {
             onRemoteUpdate?.(payload)
+            onNoteSaved?.(payload)
         }
 
         const handleActiveUsers = (users) => {
@@ -87,7 +88,7 @@ const useNoteSocket = (noteId, onRemoteUpdate) => {
             setTypingUsers([])
             socket.disconnect()
         }
-    }, [noteId, onRemoteUpdate])
+    }, [noteId, onRemoteUpdate, onNoteSaved])
 
     const emitUpdate = useCallback((title, content) => {
         socket.emit("note:update", {

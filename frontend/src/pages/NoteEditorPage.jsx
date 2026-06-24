@@ -10,6 +10,13 @@ const getNoteFromResponse = (response) => {
     return response?.data?.note || response?.data?.data?.note || response?.data?.data || response?.data
 }
 
+const saveStatusClassMap = {
+    "Saved": "saved",
+    "Saving...": "saving",
+    "Unsaved changes": "unsaved-changes",
+    "Save failed": "save-failed"
+}
+
 const NoteEditorPage = () => {
     const { noteId } = useParams()
     const navigate = useNavigate()
@@ -34,6 +41,14 @@ const NoteEditorPage = () => {
         setContent(payload.content || "")
     }, [noteId])
 
+    const handleNoteSaved = useCallback((payload) => {
+        if (payload?.noteId !== noteId) {
+            return
+        }
+
+        setSaveStatus("Saved")
+    }, [noteId])
+
     const {
         activeUsers,
         typingUsers,
@@ -41,7 +56,7 @@ const NoteEditorPage = () => {
         emitUpdate,
         emitSave,
         emitTyping
-    } = useNoteSocket(noteId, handleRemoteUpdate)
+    } = useNoteSocket(noteId, handleRemoteUpdate, handleNoteSaved)
 
     useEffect(() => {
         const fetchNote = async () => {
@@ -76,19 +91,24 @@ const NoteEditorPage = () => {
         }
 
         const saveTimer = setTimeout(() => {
-            setSaveStatus("Saving")
+            setSaveStatus("Saving...")
             emitSave(title, content)
-            setSaveStatus("Saved")
         }, 1000)
 
         return () => clearTimeout(saveTimer)
     }, [title, content, isLoading, emitSave])
 
+    useEffect(() => {
+        if (socketError && saveStatus === "Saving...") {
+            setSaveStatus("Save failed")
+        }
+    }, [socketError, saveStatus])
+
     const handleTitleChange = (event) => {
         const nextTitle = event.target.value
 
         setTitle(nextTitle)
-        setSaveStatus("Editing")
+        setSaveStatus("Unsaved changes")
         emitUpdate(nextTitle, content)
         emitTyping()
     }
@@ -97,14 +117,14 @@ const NoteEditorPage = () => {
         const nextContent = event.target.value
 
         setContent(nextContent)
-        setSaveStatus("Editing")
+        setSaveStatus("Unsaved changes")
         emitUpdate(title, nextContent)
         emitTyping()
     }
 
     const handleSave = async () => {
         setIsSaving(true)
-        setSaveStatus("Saving")
+        setSaveStatus("Saving...")
         setError("")
 
         try {
@@ -112,7 +132,7 @@ const NoteEditorPage = () => {
             setSaveStatus("Saved")
         } catch {
             setError("Unable to save note.")
-            setSaveStatus("Needs attention")
+            setSaveStatus("Save failed")
         } finally {
             setIsSaving(false)
         }
@@ -149,7 +169,7 @@ const NoteEditorPage = () => {
                     <button className="ghost-button" type="button" onClick={() => navigate("/settings")}>
                         Settings
                     </button>
-                    <span className={`save-indicator save-${saveStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <span className={`save-indicator save-${saveStatusClassMap[saveStatus]}`}>
                         {saveStatus}
                     </span>
                 </div>
@@ -160,7 +180,7 @@ const NoteEditorPage = () => {
                         <span>{activeUsers.length} active</span>
                     </div>
                     <button className="secondary-button" type="button" onClick={handleSave} disabled={isSaving}>
-                        {isSaving ? "Saving" : "Save"}
+                        {isSaving ? "Saving..." : "Save"}
                     </button>
                     <button className="primary-button" type="button" onClick={() => setIsShareOpen(true)}>
                         Share

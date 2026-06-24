@@ -720,13 +720,13 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
     font-weight: 800;
 }
 
-.save-editing,
+.save-unsaved-changes,
 .save-saving {
     color: var(--amber);
     background: var(--amber-soft);
 }
 
-.save-needs-attention {
+.save-save-failed {
     color: var(--red);
     background: var(--red-soft);
 }

@@ -20,6 +20,7 @@ const NoteEditorPage = () => {
     const [saveStatus, setSaveStatus] = useState("Saved")
     const [error, setError] = useState("")
     const [isShareOpen, setIsShareOpen] = useState(false)
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
     const hasLoadedNote = useRef(false)
     const isApplyingRemoteUpdate = useRef(false)
 
@@ -160,7 +161,7 @@ const NoteEditorPage = () => {
                     <button className="primary-button" type="button" onClick={() => setIsShareOpen(true)}>
                         Share
                     </button>
-                    <button className="danger-button" type="button" onClick={handleDelete}>
+                    <button className="danger-button" type="button" onClick={() => setIsDeleteConfirmOpen(true)}>
                         Delete
                     </button>
                 </div>
@@ -220,6 +221,30 @@ const NoteEditorPage = () => {
                     noteId={noteId}
                     onClose={() => setIsShareOpen(false)}
                 />
+            )}
+
+            {isDeleteConfirmOpen && (
+                <div className="modal-backdrop">
+                    <section className="modal-card delete-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-note-title">
+                        <header className="modal-header">
+                            <div>
+                                <p className="eyebrow">Delete note</p>
+                                <h2 id="delete-note-title">Confirm deletion</h2>
+                            </div>
+                        </header>
+
+                        <p>Are you sure you want to delete this note? This action cannot be undone.</p>
+
+                        <div className="modal-actions">
+                            <button className="ghost-button" type="button" onClick={() => setIsDeleteConfirmOpen(false)}>
+                                Cancel
+                            </button>
+                            <button className="danger-button" type="button" onClick={handleDelete}>
+                                Delete note
+                            </button>
+                        </div>
+                    </section>
+                </div>
             )}
         </main>
     )

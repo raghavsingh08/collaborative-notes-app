@@ -905,6 +905,18 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
     align-items: stretch;
 }
 
+.delete-confirm-modal p {
+    margin: 0;
+    color: var(--muted-strong);
+    line-height: 1.6;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
 .home-shell {
     min-height: 100vh;
     background: var(--bg);

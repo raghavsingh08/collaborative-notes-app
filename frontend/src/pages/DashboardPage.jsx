@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { createNote, getNotes } from "../api/notes.api"
 import { useAuth } from "../context/AuthContext"
 import { Badge, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
+import UserMenu from "../components/ui/UserMenu"
 import { formatDateTime } from "../components/ui/uiUtils"
 
 const getNotesFromResponse = (response) => {
@@ -15,7 +16,7 @@ const getId = (value) => {
 
 const DashboardPage = () => {
     const navigate = useNavigate()
-    const { user, logout } = useAuth()
+    const { user } = useAuth()
     const [notes, setNotes] = useState([])
     const [title, setTitle] = useState("")
     const [query, setQuery] = useState("")
@@ -79,7 +80,7 @@ const DashboardPage = () => {
         <main className="app-shell">
             <aside className="sidebar">
                 <div className="brand-row">
-                    <div className="brand-mark">CN</div>
+                    <UserMenu />
                     <div>
                         <p className="eyebrow">Collaborative Notes</p>
                         <h1>{displayName}</h1>
@@ -105,14 +106,7 @@ const DashboardPage = () => {
                     <span className="nav-item active">All notes <strong>{notes.length}</strong></span>
                     <span className="nav-item">Owned <strong>{ownedCount}</strong></span>
                     <span className="nav-item">Shared <strong>{sharedCount}</strong></span>
-                    <button className="nav-item nav-button" type="button" onClick={() => navigate("/settings")}>
-                        Settings <strong>&gt;</strong>
-                    </button>
                 </nav>
-
-                <button className="ghost-button sidebar-logout" type="button" onClick={logout}>
-                    Sign out
-                </button>
             </aside>
 
             <section className="dashboard-panel" aria-labelledby="dashboard-title">

@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken"
 import { Server } from "socket.io"
 import User from "../models/user.model.js"
+import { corsOptions } from "../config/cors.js"
 import { registerNoteSocketHandlers } from "./note.socket.js"
 
 const parseCookies = (cookieHeader = "") => {
@@ -18,10 +19,7 @@ const parseCookies = (cookieHeader = "") => {
 
 const initializeSocket = (httpServer) => {
     const io = new Server(httpServer, {
-        cors: {
-            origin: "http://localhost:5173",
-            credentials: true
-        }
+        cors: corsOptions
     })
 
     io.use(async (socket, next) => {

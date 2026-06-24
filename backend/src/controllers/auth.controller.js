@@ -105,9 +105,89 @@ const getCurrentUser = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, req.user, "Current user fetched successfully"))
 })
 
+const updateProfile = asyncHandler(async (req, res) => {
+    const { username, email } = req.body
+    const updates = {}
+
+    if (username?.trim()) {
+        updates.username = username.trim()
+    }
+
+    if (email?.trim()) {
+        updates.email = email.trim().toLowerCase()
+    }
+
+    if (Object.keys(updates).length === 0) {
+        throw new ApiError(400, "Username or email is required")
+    }
+
+    const duplicateConditions = []
+
+    if (updates.username) {
+        duplicateConditions.push({ username: updates.username })
+    }
+
+    if (updates.email) {
+        duplicateConditions.push({ email: updates.email })
+    }
+
+    const existingUser = await User.findOne({
+        _id: { $ne: req.user._id },
+        $or: duplicateConditions
+    })
+
+    if (existingUser) {
+        throw new ApiError(409, "Username or email is already in use")
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+        req.user._id,
+        { $set: updates },
+        { returnDocument: "after",
+             runValidators: true }
+    ).select("-password")
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, updatedUser, "Profile updated successfully"))
+})
+
+const updatePassword = asyncHandler(async (req, res) => {
+    const { oldPassword, newPassword } = req.body
+
+    if (!oldPassword || !newPassword) {
+        throw new ApiError(400, "Old password and new password are required")
+    }
+
+    if (newPassword.length < 8) {
+        throw new ApiError(400, "New password must be at least 8 characters long")
+    }
+
+    const user = await User.findById(req.user._id).select("+password")
+
+    if (!user) {
+        throw new ApiError(404, "User not found")
+    }
+
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password)
+
+    if (!isPasswordValid) {
+        throw new ApiError(401, "Old password is incorrect")
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10)
+    await user.save()
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, null, "Password updated successfully"))
+})
+
 export {
     registerUser,
     loginUser,
     logoutUser,
-    getCurrentUser
+    getCurrentUser,
+    updateProfile,
+    updatePassword
 }

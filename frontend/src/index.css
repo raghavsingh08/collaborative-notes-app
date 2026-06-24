@@ -25,6 +25,48 @@
     --red: #b42318;
     --red-soft: #fee4e2;
     --shadow: 0 18px 50px rgba(20, 29, 46, 0.08);
+    --body-gradient-start: rgba(255, 255, 255, 0.7);
+    --body-gradient-end: rgba(246, 247, 249, 0.9);
+    --sidebar-bg: #fbfcfd;
+    --toolbar-bg: rgba(255, 255, 255, 0.92);
+    --editor-bg: #f8fafc;
+    --input-bg: #ffffff;
+    --overlay: rgba(15, 23, 42, 0.42);
+    --skeleton-start: #eef1f5;
+    --skeleton-mid: #f8fafc;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    color: #e5e7eb;
+    background: #0f172a;
+    --bg: #0f172a;
+    --surface: #111827;
+    --surface-soft: #1f2937;
+    --border: #334155;
+    --border-strong: #475569;
+    --text: #e5e7eb;
+    --muted: #94a3b8;
+    --muted-strong: #cbd5e1;
+    --accent: #60a5fa;
+    --accent-dark: #3b82f6;
+    --green: #86efac;
+    --green-soft: rgba(22, 101, 52, 0.32);
+    --blue-soft: rgba(37, 99, 235, 0.26);
+    --amber: #fbbf24;
+    --amber-soft: rgba(180, 83, 9, 0.28);
+    --red: #fca5a5;
+    --red-soft: rgba(127, 29, 29, 0.32);
+    --shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
+    --body-gradient-start: rgba(15, 23, 42, 0.95);
+    --body-gradient-end: rgba(15, 23, 42, 0.98);
+    --sidebar-bg: #101827;
+    --toolbar-bg: rgba(17, 24, 39, 0.92);
+    --editor-bg: #0f172a;
+    --input-bg: #0f172a;
+    --overlay: rgba(2, 6, 23, 0.72);
+    --skeleton-start: #1f2937;
+    --skeleton-mid: #334155;
 }
 
 body {
@@ -32,8 +74,10 @@ body {
     min-width: 320px;
     min-height: 100vh;
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(246, 247, 249, 0.9)),
+        linear-gradient(180deg, var(--body-gradient-start), var(--body-gradient-end)),
         var(--bg);
+    color: var(--text);
+    transition: background 180ms ease, color 180ms ease;
 }
 
 button,
@@ -57,7 +101,7 @@ textarea {
     border: 1px solid var(--border);
     border-radius: 10px;
     color: var(--text);
-    background: #fff;
+    background: var(--input-bg);
     outline: none;
     transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
@@ -72,7 +116,7 @@ a {
     color: var(--accent);
 }
 
-main:not(.app-shell):not(.editor-shell) {
+main:not(.app-shell):not(.editor-shell):not(.settings-shell) {
     width: min(440px, calc(100% - 32px));
     margin: 64px auto;
     padding: 28px;
@@ -82,22 +126,22 @@ main:not(.app-shell):not(.editor-shell) {
     box-shadow: var(--shadow);
 }
 
-main:not(.app-shell):not(.editor-shell) h1 {
+main:not(.app-shell):not(.editor-shell):not(.settings-shell) h1 {
     margin: 0 0 20px;
     font-size: 2rem;
 }
 
-main:not(.app-shell):not(.editor-shell) form {
+main:not(.app-shell):not(.editor-shell):not(.settings-shell) form {
     display: grid;
     gap: 16px;
 }
 
-main:not(.app-shell):not(.editor-shell) input {
+main:not(.app-shell):not(.editor-shell):not(.settings-shell) input {
     min-height: 44px;
     padding: 0 12px;
 }
 
-main:not(.app-shell):not(.editor-shell) button {
+main:not(.app-shell):not(.editor-shell):not(.settings-shell) button {
     min-height: 44px;
     border: 0;
     border-radius: 10px;
@@ -120,7 +164,7 @@ main:not(.app-shell):not(.editor-shell) button {
     height: 100vh;
     padding: 24px;
     border-right: 1px solid var(--border);
-    background: #fbfcfd;
+    background: var(--sidebar-bg);
 }
 
 .brand-row {
@@ -215,7 +259,7 @@ main:not(.app-shell):not(.editor-shell) button {
 .secondary-button {
     color: var(--text);
     border-color: var(--border);
-    background: #fff;
+    background: var(--surface);
 }
 
 .ghost-button {
@@ -226,8 +270,8 @@ main:not(.app-shell):not(.editor-shell) button {
 
 .danger-button {
     color: var(--red);
-    border-color: #f2b8b5;
-    background: #fff;
+    border-color: var(--red-soft);
+    background: var(--surface);
 }
 
 .icon-button {
@@ -235,7 +279,7 @@ main:not(.app-shell):not(.editor-shell) button {
     padding: 0;
     color: var(--muted-strong);
     border-color: var(--border);
-    background: #fff;
+    background: var(--surface);
 }
 
 .sidebar-nav {
@@ -248,13 +292,22 @@ main:not(.app-shell):not(.editor-shell) button {
     align-items: center;
     justify-content: space-between;
     min-height: 38px;
+    width: 100%;
+    border: 0;
     padding: 0 10px;
     border-radius: 10px;
     color: var(--muted-strong);
     font-weight: 650;
+    text-align: left;
+    background: transparent;
 }
 
 .nav-item.active {
+    color: var(--text);
+    background: var(--surface-soft);
+}
+
+.nav-button:hover {
     color: var(--text);
     background: var(--surface-soft);
 }
@@ -288,7 +341,7 @@ main:not(.app-shell):not(.editor-shell) button {
     padding-left: 12px;
     border: 1px solid var(--border);
     border-radius: 12px;
-    background: #fff;
+    background: var(--surface);
 }
 
 .search-wrap span {
@@ -361,7 +414,7 @@ main:not(.app-shell):not(.editor-shell) button {
 }
 
 .badge-info {
-    color: #1d4ed8;
+    color: var(--accent);
     background: var(--blue-soft);
 }
 
@@ -382,6 +435,11 @@ main:not(.app-shell):not(.editor-shell) button {
     background: var(--red-soft);
 }
 
+.notice-success {
+    color: var(--green);
+    background: var(--green-soft);
+}
+
 .empty-state {
     display: grid;
     justify-items: start;
@@ -390,7 +448,7 @@ main:not(.app-shell):not(.editor-shell) button {
     border: 1px dashed var(--border-strong);
     border-radius: 14px;
     color: var(--muted);
-    background: rgba(255, 255, 255, 0.72);
+    background: var(--surface);
 }
 
 .empty-state h2 {
@@ -433,7 +491,7 @@ main:not(.app-shell):not(.editor-shell) button {
 
 .loading-row span {
     border-radius: 999px;
-    background: linear-gradient(90deg, #eef1f5, #f8fafc, #eef1f5);
+    background: linear-gradient(90deg, var(--skeleton-start), var(--skeleton-mid), var(--skeleton-start));
     background-size: 180% 100%;
     animation: shimmer 1.2s ease-in-out infinite;
 }
@@ -446,7 +504,7 @@ main:not(.app-shell):not(.editor-shell) button {
 
 .editor-shell {
     min-height: 100vh;
-    background: #f8fafc;
+    background: var(--editor-bg);
 }
 
 .editor-toolbar {
@@ -460,7 +518,7 @@ main:not(.app-shell):not(.editor-shell) button {
     min-height: 68px;
     padding: 12px 24px;
     border-bottom: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.92);
+    background: var(--toolbar-bg);
     backdrop-filter: blur(14px);
 }
 
@@ -546,7 +604,7 @@ main:not(.app-shell):not(.editor-shell) button {
     border-radius: 0;
     padding: 0;
     resize: vertical;
-    color: #283244;
+    color: var(--text);
     font-size: 1.06rem;
     line-height: 1.75;
     box-shadow: none;
@@ -565,7 +623,7 @@ main:not(.app-shell):not(.editor-shell) button {
     border: 1px solid var(--border);
     border-radius: 16px;
     padding: 18px;
-    background: #fff;
+    background: var(--surface);
 }
 
 .collaboration-panel .empty-state {
@@ -584,7 +642,7 @@ main:not(.app-shell):not(.editor-shell) button {
     width: 32px;
     height: 32px;
     margin-left: -8px;
-    border: 2px solid #fff;
+    border: 2px solid var(--surface);
     border-radius: 999px;
     color: #fff;
     background: #334155;
@@ -650,7 +708,7 @@ main:not(.app-shell):not(.editor-shell) button {
     display: grid;
     place-items: center;
     padding: 20px;
-    background: rgba(15, 23, 42, 0.42);
+    background: var(--overlay);
 }
 
 .modal-card {
@@ -662,7 +720,7 @@ main:not(.app-shell):not(.editor-shell) button {
     border: 1px solid var(--border);
     border-radius: 18px;
     padding: 22px;
-    background: #fff;
+    background: var(--surface);
     box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
 }
 
@@ -676,6 +734,100 @@ main:not(.app-shell):not(.editor-shell) button {
 
 .share-form {
     align-items: stretch;
+}
+
+.settings-shell {
+    min-height: 100vh;
+    padding: 34px;
+    background: var(--bg);
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    width: min(1120px, 100%);
+    margin: 0 auto 24px;
+}
+
+.settings-header h1 {
+    margin: 0;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    line-height: 1;
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    width: min(1120px, 100%);
+    margin: 0 auto;
+}
+
+.settings-card {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.settings-card h2 {
+    margin: 0 0 6px;
+}
+
+.settings-card p {
+    margin: 0;
+    color: var(--muted);
+}
+
+.settings-card label {
+    color: var(--muted-strong);
+    font-size: 0.84rem;
+    font-weight: 800;
+}
+
+.settings-card input {
+    height: 44px;
+    padding: 0 12px;
+}
+
+.settings-card .primary-button {
+    justify-self: start;
+}
+
+.theme-card {
+    grid-column: 1 / -1;
+}
+
+.theme-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    width: min(320px, 100%);
+    min-height: 46px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px;
+    color: var(--muted-strong);
+    background: var(--surface-soft);
+}
+
+.theme-toggle span {
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    font-weight: 800;
+    transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.theme-toggle .active {
+    color: var(--text);
+    background: var(--surface);
+    box-shadow: 0 6px 16px rgba(20, 29, 46, 0.1);
 }
 
 @media (max-width: 920px) {
@@ -701,6 +853,10 @@ main:not(.app-shell):not(.editor-shell) button {
 
     .collaboration-panel {
         position: static;
+    }
+
+    .settings-grid {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -736,5 +892,14 @@ main:not(.app-shell):not(.editor-shell) button {
     .document-surface {
         min-height: calc(100vh - 150px);
         padding: 24px;
+    }
+
+    .settings-shell {
+        padding: 20px;
+    }
+
+    .settings-header {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }

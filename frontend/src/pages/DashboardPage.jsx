@@ -105,6 +105,9 @@ const DashboardPage = () => {
                     <span className="nav-item active">All notes <strong>{notes.length}</strong></span>
                     <span className="nav-item">Owned <strong>{ownedCount}</strong></span>
                     <span className="nav-item">Shared <strong>{sharedCount}</strong></span>
+                    <button className="nav-item nav-button" type="button" onClick={() => navigate("/settings")}>
+                        Settings <strong>&gt;</strong>
+                    </button>
                 </nav>
 
                 <button className="ghost-button sidebar-logout" type="button" onClick={logout}>

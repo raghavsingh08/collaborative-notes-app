@@ -141,6 +141,9 @@ const NoteEditorPage = () => {
                     <button className="ghost-button" type="button" onClick={() => navigate("/dashboard")}>
                         Back
                     </button>
+                    <button className="ghost-button" type="button" onClick={() => navigate("/settings")}>
+                        Settings
+                    </button>
                     <span className={`save-indicator save-${saveStatus.toLowerCase().replace(/\s+/g, "-")}`}>
                         {saveStatus}
                     </span>

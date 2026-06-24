@@ -96,7 +96,7 @@ const updateNote = asyncHandler(async (req, res) => {
             $set: updates
         },
         {
-            new: true,
+            returnDocument: "after",
             runValidators: true
         }
     )

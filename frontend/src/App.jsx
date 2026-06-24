@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage"
 import RegisterPage from "./pages/RegisterPage"
 import DashboardPage from "./pages/DashboardPage"
 import NoteEditorPage from "./pages/NoteEditorPage"
+import SettingsPage from "./pages/SettingsPage"
 
 const App = () => {
     return (
@@ -14,6 +15,7 @@ const App = () => {
             <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/notes/:noteId" element={<NoteEditorPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -44,13 +44,16 @@ const DashboardPage = () => {
 
     const handleCreateNote = async (event) => {
         event.preventDefault()
+        await createNoteFromTitle(title)
+    }
 
-        if (!title.trim()) {
+    const createNoteFromTitle = async (nextTitle) => {
+        if (!nextTitle.trim()) {
             return
         }
 
         try {
-            const response = await createNote({ title: title.trim() })
+            const response = await createNote({ title: nextTitle.trim() })
             const note = response?.data?.note || response?.data?.data?.note || response?.data?.data || response?.data
 
             setTitle("")
@@ -62,6 +65,10 @@ const DashboardPage = () => {
         } catch {
             setError("Unable to create note.")
         }
+    }
+
+    const handleCreateFirstNote = () => {
+        createNoteFromTitle("Untitled note")
     }
 
     const filteredNotes = notes.filter((note) => {
@@ -133,8 +140,13 @@ const DashboardPage = () => {
                     <LoadingRows count={6} />
                 ) : filteredNotes.length === 0 ? (
                     <EmptyState
-                        title={query ? "No matching notes" : "No notes yet"}
-                        description={query ? "Try a different search term." : "Create your first shared document from the sidebar."}
+                        title={query ? "No notes found" : "Start your first note"}
+                        description={query ? "Try another search or clear the search field." : "Create a blank note and start writing with your team."}
+                        action={!query && (
+                            <button className="primary-button" type="button" onClick={handleCreateFirstNote}>
+                                Create first note
+                            </button>
+                        )}
                     />
                 ) : (
                     <div className="notes-list" role="list">

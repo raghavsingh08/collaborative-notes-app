@@ -623,6 +623,11 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
     margin: 0;
 }
 
+.empty-state .primary-button,
+.empty-state .secondary-button {
+    margin-top: 8px;
+}
+
 .empty-state-icon {
     display: grid;
     place-items: center;

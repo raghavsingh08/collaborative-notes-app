@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { getSharedUsers, removeSharedUser, shareNote } from "../../api/notes.api"
+import { EmptyState, ErrorState, LoadingRows } from "../ui/AppUI"
 
 const getSharedUsersFromResponse = (response) => {
     return response?.data?.users || response?.data?.data?.users || response?.data?.data || response?.data || []
@@ -69,45 +70,57 @@ const ShareNoteModal = ({ noteId, onClose }) => {
     }
 
     return (
-        <div role="dialog" aria-modal="true" aria-labelledby="share-note-title">
-            <h2 id="share-note-title">Share Note</h2>
+        <div className="modal-backdrop">
+            <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="share-note-title">
+                <header className="modal-header">
+                    <div>
+                        <p className="eyebrow">Access</p>
+                        <h2 id="share-note-title">Share note</h2>
+                    </div>
+                    <button className="icon-button" type="button" onClick={onClose} aria-label="Close share dialog">
+                        x
+                    </button>
+                </header>
 
-            <form onSubmit={handleShare}>
-                <input
-                    type="text"
-                    value={recipient}
-                    onChange={(event) => setRecipient(event.target.value)}
-                    placeholder="Email or username"
-                    aria-label="Email or username"
-                />
-                <button type="submit" disabled={isSharing}>
-                    {isSharing ? "Sharing..." : "Share"}
-                </button>
-            </form>
+                <form className="share-form" onSubmit={handleShare}>
+                    <input
+                        type="text"
+                        value={recipient}
+                        onChange={(event) => setRecipient(event.target.value)}
+                        placeholder="Email or username"
+                        aria-label="Email or username"
+                    />
+                    <button className="primary-button" type="submit" disabled={isSharing}>
+                        {isSharing ? "Sharing" : "Share"}
+                    </button>
+                </form>
 
-            {error && <p role="alert">{error}</p>}
+                <ErrorState message={error} />
 
-            {isLoading ? (
-                <p>Loading...</p>
-            ) : (
-                <ul>
-                    {sharedUsers.map((user) => (
-                        <li key={user._id || user.id}>
-                            <span>{user.username || user.email}</span>
-                            <button
-                                type="button"
-                                onClick={() => handleRemoveUser(user._id || user.id)}
-                            >
-                                Remove
-                            </button>
-                        </li>
-                    ))}
-                </ul>
-            )}
-
-            <button type="button" onClick={onClose}>
-                Close
-            </button>
+                {isLoading ? (
+                    <LoadingRows count={3} />
+                ) : sharedUsers.length === 0 ? (
+                    <EmptyState
+                        title="No shared users"
+                        description="Add a teammate above to give them access."
+                    />
+                ) : (
+                    <ul className="shared-user-list">
+                        {sharedUsers.map((user) => (
+                            <li key={user._id || user.id}>
+                                <span>{user.username || user.email}</span>
+                                <button
+                                    className="ghost-button"
+                                    type="button"
+                                    onClick={() => handleRemoveUser(user._id || user.id)}
+                                >
+                                    Remove
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
         </div>
     )
 }

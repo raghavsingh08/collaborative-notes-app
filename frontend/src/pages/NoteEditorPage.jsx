@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { deleteNote, getNoteById, updateNote } from "../api/notes.api"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
+import { AvatarStack, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
+import { getDisplayName } from "../components/ui/uiUtils"
 import useNoteSocket from "../hooks/useNoteSocket"
 
 const getNoteFromResponse = (response) => {
@@ -15,6 +17,7 @@ const NoteEditorPage = () => {
     const [content, setContent] = useState("")
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
+    const [saveStatus, setSaveStatus] = useState("Saved")
     const [error, setError] = useState("")
     const [isShareOpen, setIsShareOpen] = useState(false)
     const hasLoadedNote = useRef(false)
@@ -70,7 +73,9 @@ const NoteEditorPage = () => {
         }
 
         const saveTimer = setTimeout(() => {
+            setSaveStatus("Saving")
             emitSave(title, content)
+            setSaveStatus("Saved")
         }, 1000)
 
         return () => clearTimeout(saveTimer)
@@ -80,6 +85,7 @@ const NoteEditorPage = () => {
         const nextTitle = event.target.value
 
         setTitle(nextTitle)
+        setSaveStatus("Editing")
         emitUpdate(nextTitle, content)
     }
 
@@ -87,17 +93,21 @@ const NoteEditorPage = () => {
         const nextContent = event.target.value
 
         setContent(nextContent)
+        setSaveStatus("Editing")
         emitUpdate(title, nextContent)
     }
 
     const handleSave = async () => {
         setIsSaving(true)
+        setSaveStatus("Saving")
         setError("")
 
         try {
             await updateNote(noteId, { title, content })
+            setSaveStatus("Saved")
         } catch {
             setError("Unable to save note.")
+            setSaveStatus("Needs attention")
         } finally {
             setIsSaving(false)
         }
@@ -115,58 +125,99 @@ const NoteEditorPage = () => {
     }
 
     if (isLoading) {
-        return <p>Loading...</p>
+        return (
+            <main className="editor-shell">
+                <section className="editor-loading">
+                    <LoadingRows count={5} />
+                </section>
+            </main>
+        )
     }
 
     return (
-        <main>
-            <button type="button" onClick={() => navigate("/dashboard")}>
-                Back
-            </button>
+        <main className="editor-shell">
+            <header className="editor-toolbar">
+                <div className="toolbar-left">
+                    <button className="ghost-button" type="button" onClick={() => navigate("/dashboard")}>
+                        Back
+                    </button>
+                    <span className={`save-indicator save-${saveStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                        {saveStatus}
+                    </span>
+                </div>
 
-            <h1>Edit Note</h1>
+                <div className="toolbar-actions">
+                    <div className="toolbar-collaborators">
+                        <AvatarStack users={activeUsers} />
+                        <span>{activeUsers.length} active</span>
+                    </div>
+                    <button className="secondary-button" type="button" onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? "Saving" : "Save"}
+                    </button>
+                    <button className="primary-button" type="button" onClick={() => setIsShareOpen(true)}>
+                        Share
+                    </button>
+                    <button className="danger-button" type="button" onClick={handleDelete}>
+                        Delete
+                    </button>
+                </div>
+            </header>
 
-            {error && <p role="alert">{error}</p>}
-            {socketError && <p role="alert">{socketError}</p>}
+            <div className="editor-grid">
+                <section className="document-surface" aria-labelledby="title">
+                    <ErrorState message={error} />
+                    <ErrorState message={socketError} />
 
-            <p>Active users: {activeUsers.length}</p>
+                    <input
+                        id="title"
+                        className="title-input"
+                        type="text"
+                        value={title}
+                        onChange={handleTitleChange}
+                        placeholder="Untitled"
+                        aria-label="Note title"
+                    />
 
-            <div>
-                <label htmlFor="title">Title</label>
-                <input
-                    id="title"
-                    type="text"
-                    value={title}
-                    onChange={handleTitleChange}
-                />
+                    <textarea
+                        id="content"
+                        className="content-editor"
+                        value={content}
+                        onChange={handleContentChange}
+                        placeholder="Start writing..."
+                        aria-label="Note content"
+                    />
+                </section>
+
+                <aside className="collaboration-panel" aria-label="Active collaborators">
+                    <div>
+                        <p className="eyebrow">Live session</p>
+                        <h2>Collaborators</h2>
+                    </div>
+
+                    {activeUsers.length === 0 ? (
+                        <EmptyState
+                            title="Just you for now"
+                            description="Invite teammates to edit together in real time."
+                        />
+                    ) : (
+                        <ul className="collaborator-list">
+                            {activeUsers.map((activeUser, index) => (
+                                <li key={activeUser?._id || activeUser?.id || activeUser?.email || index}>
+                                    <span className="avatar">{getDisplayName(activeUser).slice(0, 2).toUpperCase()}</span>
+                                    <span>{getDisplayName(activeUser)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </aside>
             </div>
 
-            <div>
-                <label htmlFor="content">Content</label>
-                <textarea
-                    id="content"
-                    value={content}
-                    onChange={handleContentChange}
-                    rows="10"
-                />
-            </div>
-            
-            <button type="button" onClick={handleSave} disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save"}
-            </button>
-            <button type="button" onClick={() => setIsShareOpen(true)}>
-                Share
-            </button>
-
-            <button type="button" onClick={handleDelete}>
-                Delete
-            </button>
             {isShareOpen && (
-            <ShareNoteModal
-            noteId={noteId}
-            onClose={() => setIsShareOpen(false)}
-            />
-        )}
+                <ShareNoteModal
+                    noteId={noteId}
+                    onClose={() => setIsShareOpen(false)}
+                />
+            )}
         </main>
     )
 }

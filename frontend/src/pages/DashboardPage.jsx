@@ -312,6 +312,8 @@ const DashboardPage = () => {
                                     <span className="note-row-meta">
                                         <CollaboratorAvatarGroup
                                             users={collaborators}
+                                            owner={note.owner || note.ownerId || note.createdBy}
+                                            currentUser={user}
                                             onClick={(event) => {
                                                 event.stopPropagation()
                                                 setCollaborationNote(note)

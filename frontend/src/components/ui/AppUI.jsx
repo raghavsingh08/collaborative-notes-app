@@ -125,16 +125,33 @@ const AvatarStack = ({ users = [], limit = 4, typingUsers = [] }) => {
 /* ─── Collaborator Avatar Group (note cards) ──────────── */
 const CollaboratorAvatarGroup = ({
     users = [],
+    owner = null,
+    currentUser = null,
     limit = 3,
     activeUsers = [],
     typingUsers = [],
     onClick,
     label = "Manage collaborators"
 }) => {
-    const visibleUsers = users.filter(Boolean).slice(0, limit)
-    const overflow = Math.max(users.length - visibleUsers.length, 0)
+    let stackUsers = []
+    
+    const ownerKey = owner ? getUserKey(owner) : null
+    const currentUserKey = currentUser ? getUserKey(currentUser) : null
+    const isOwner = Boolean(ownerKey && currentUserKey && ownerKey === currentUserKey)
 
-    if (visibleUsers.length === 0) return null
+    if (isOwner) {
+        // Logged-in user is the owner: show ONLY collaborators (do not include owner's own avatar)
+        stackUsers = users.filter(u => getUserKey(u) !== ownerKey)
+    } else {
+        // Logged-in user is an editor: show Owner FIRST, then editors
+        const editors = users.filter(u => getUserKey(u) !== ownerKey)
+        stackUsers = owner ? [owner, ...editors] : [...editors]
+    }
+
+    const visibleUsers = stackUsers.filter(Boolean).slice(0, limit)
+    const overflow = Math.max(stackUsers.length - visibleUsers.length, 0)
+
+    if (stackUsers.length === 0) return null
 
     return (
         <button
@@ -143,19 +160,42 @@ const CollaboratorAvatarGroup = ({
             onClick={onClick}
             aria-label={label}
         >
-            {visibleUsers.map((user, index) => (
-                <span
-                    className={`collaborator-avatar presence-avatar ${isUserInList(user, typingUsers) ? "is-typing" : ""}`}
-                    title={getDisplayName(user)}
-                    key={getUserKey(user) || index}
-                >
-                    {getInitials(user).slice(0, 1)}
-                    <PresenceMarks
-                        isOnline={isUserInList(user, activeUsers)}
-                        isTyping={isUserInList(user, typingUsers)}
-                    />
-                </span>
-            ))}
+            {visibleUsers.map((user, index) => {
+                const isUserOwner = ownerKey && getUserKey(user) === ownerKey
+                const isUserCurrent = currentUserKey && getUserKey(user) === currentUserKey
+                
+                const avatarClass = `collaborator-avatar presence-avatar ${isUserInList(user, typingUsers) ? "is-typing" : ""} ${isUserOwner ? "is-owner" : ""} ${isUserCurrent && !isUserOwner ? "is-current-user" : ""}`
+                
+                let tooltip = getDisplayName(user, isUserOwner ? "Owner" : "Editor")
+                if (isUserOwner) tooltip += "\nOwner"
+                else if (isUserCurrent) tooltip += "\nYou"
+                else tooltip += "\nEditor"
+
+                // Pass the correct fallback to getInitials as well (indirectly by wrapping in an object if it's a string, or just using getDisplayName)
+                // Actually getInitials calls getDisplayName(value) internally without fallback.
+                // So let's extract the exact display name first.
+                const finalDisplayName = getDisplayName(user, isUserOwner ? "Owner" : "Editor")
+                const finalInitial = getInitials(finalDisplayName).slice(0, 1)
+
+                return (
+                    <span
+                        className={avatarClass}
+                        title={tooltip}
+                        key={getUserKey(user) || index}
+                    >
+                        {finalInitial}
+                        <PresenceMarks
+                            isOnline={isUserInList(user, activeUsers)}
+                            isTyping={isUserInList(user, typingUsers)}
+                        />
+                        {isUserCurrent && !isUserOwner && (
+                            <span className="current-user-indicator" aria-hidden="true" title="You">
+                                <IconCheck size={10} />
+                            </span>
+                        )}
+                    </span>
+                )
+            })}
             {overflow > 0 && (
                 <span className="collaborator-avatar collaborator-overflow">+{overflow}</span>
             )}

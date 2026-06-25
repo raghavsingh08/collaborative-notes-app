@@ -17,16 +17,20 @@ const formatDateTime = (value) => {
     }).format(date)
 }
 
-const getDisplayName = (user) => {
+const getDisplayName = (user, fallback = "Guest") => {
     if (!user) {
-        return "Guest"
+        return fallback
     }
 
     if (typeof user === "string") {
+        // Prevent displaying a raw 24-char hex MongoDB ObjectId
+        if (/^[0-9a-fA-F]{24}$/.test(user)) {
+            return fallback
+        }
         return user
     }
 
-    return user.username || user.name || user.email || "Collaborator"
+    return user.username || user.fullName || user.name || user.email || fallback
 }
 
 const getInitials = (value) => {

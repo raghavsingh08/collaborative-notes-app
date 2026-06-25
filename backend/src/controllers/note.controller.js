@@ -37,7 +37,7 @@ const getAllNotes = asyncHandler(async (req, res) => {
             { owner: req.user._id },
             { sharedWith: req.user._id }
         ]
-    }).sort({ updatedAt: -1 })
+    }).sort({ updatedAt: -1 }).populate("owner", "username email name")
 
     return res
         .status(200)
@@ -53,7 +53,7 @@ const getNoteById = asyncHandler(async (req, res) => {
 
     const note = await Note.findOne(
         getAccessibleNoteQuery(noteId, req.user._id)
-    )
+    ).populate("owner", "username email name")
 
     if (!note) {
         throw new ApiError(404, "Note not found")

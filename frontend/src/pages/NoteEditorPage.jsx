@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { deleteNote, getNoteById, updateNote } from "../api/notes.api"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
@@ -48,6 +48,8 @@ const isUserInList = (user, users = []) => {
     })
 }
 
+const getId = (user) => user?._id || user?.id || user
+
 const NoteEditorPage = () => {
     const { noteId } = useParams()
     const navigate = useNavigate()
@@ -91,6 +93,17 @@ const NoteEditorPage = () => {
         emitSave,
         emitTyping
     } = useNoteSocket(noteId, handleRemoteUpdate, handleNoteSaved)
+
+    const sortedActiveUsers = useMemo(() => {
+        const ownerIdString = String(getId(noteOwner) || "")
+        return [...activeUsers].sort((a, b) => {
+            const aId = String(getId(a) || "")
+            const bId = String(getId(b) || "")
+            if (ownerIdString && aId === ownerIdString) return -1
+            if (ownerIdString && bId === ownerIdString) return 1
+            return 0
+        })
+    }, [activeUsers, noteOwner])
 
     useEffect(() => {
         const fetchNote = async () => {
@@ -241,8 +254,7 @@ const NoteEditorPage = () => {
     return (
         <main className="editor-shell">
             <header className="editor-toolbar">
-                {/* 1. Navigation */}
-                <div className="toolbar-left">
+                <div className="editor-toolbar-left">
                     <button
                         className="ghost-button"
                         type="button"
@@ -252,27 +264,31 @@ const NoteEditorPage = () => {
                         <IconArrowLeft size={15} />
                         <span className="desktop-label">Back</span>
                     </button>
-                </div>
 
-                {/* 2. Status */}
-                <div className="toolbar-status">
                     <span
                         className={`save-indicator save-${saveStatusClassMap[saveStatus]}`}
                         aria-live="polite"
                     >
                         {saveStatus === "Unsaved changes" ? "Unsaved" : saveStatus}
                     </span>
-                    
-                    {activeUsers.length > 0 && (
-                        <div className="toolbar-collaborators" aria-label={`${activeUsers.length} active users`}>
-                            <AvatarStack users={activeUsers} typingUsers={typingUsers} />
-                            <span className="desktop-label">{activeUsers.length}</span>
+                </div>
+
+                <div className="editor-toolbar-status">
+                    {sortedActiveUsers.length > 0 && (
+                        <div 
+                            className="toolbar-collaborators" 
+                            aria-label={`${sortedActiveUsers.length} active users`}
+                            onClick={() => setIsShareOpen(true)}
+                            role="button"
+                            tabIndex={0}
+                        >
+                            <AvatarStack users={sortedActiveUsers} typingUsers={typingUsers} />
+                            <span className="desktop-label">{sortedActiveUsers.length} active</span>
                         </div>
                     )}
                 </div>
 
-                {/* 3. Actions */}
-                <div className="toolbar-actions">
+                <div className="editor-toolbar-actions">
                     <button
                         className="ghost-button collaboration-entry-button"
                         type="button"
@@ -388,7 +404,7 @@ const NoteEditorPage = () => {
                         </div>
                     )}
 
-                    {activeUsers.length === 0 ? (
+                    {sortedActiveUsers.length === 0 ? (
                         <EmptyState
                             icon="users"
                             title="Just you for now"
@@ -396,7 +412,7 @@ const NoteEditorPage = () => {
                         />
                     ) : (
                         <ul className="collaborator-list">
-                            {activeUsers.map((activeUser, index) => (
+                            {sortedActiveUsers.map((activeUser, index) => (
                                 <li key={activeUser?._id || activeUser?.id || activeUser?.email || index}>
                                     <span
                                         className={`avatar presence-avatar ${isUserInList(activeUser, typingUsers) ? "is-typing" : ""}`}

@@ -1043,6 +1043,32 @@ textarea:focus {
     border: 2px solid var(--border);
 }
 
+.collaborator-avatar.is-owner {
+    background: var(--amber) !important;
+    z-index: 5;
+}
+
+.current-user-indicator {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 0 0 2px var(--border);
+    z-index: 6;
+}
+
+.current-user-indicator svg {
+    width: 8px;
+    height: 8px;
+}
+
 .collaborator-avatar-group:hover .collaborator-avatar {
     transform: translateY(-2px);
 }
@@ -1257,8 +1283,8 @@ textarea:focus {
     position: sticky;
     top: 0;
     z-index: 10;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
     gap: 16px;
     min-height: 56px;
@@ -1270,20 +1296,21 @@ textarea:focus {
     box-shadow: var(--shadow-xs);
 }
 
-.toolbar-left {
+.editor-toolbar-left {
     display: flex;
     align-items: center;
     justify-content: flex-start;
+    gap: 12px;
 }
 
-.toolbar-status {
+.editor-toolbar-status {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
 }
 
-.toolbar-actions {
+.editor-toolbar-actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -2418,12 +2445,7 @@ textarea:focus {
         flex-direction: column;
     }
 
-    .toolbar-left,
-    .toolbar-actions {
-        width: auto;
-        justify-content: flex-start;
-    }
-
+    /* Left toolbar override removed to allow flex space-between to naturally split left/right */
     .editor-more {
         display: block;
     }
@@ -2680,25 +2702,39 @@ textarea:focus {
     }
 
     .editor-toolbar {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
         gap: 4px;
         min-height: 48px;
         padding: 0 12px;
+    }
+
+    .editor-toolbar-left {
+        justify-self: start;
+        gap: 4px;
+    }
+
+    .editor-toolbar-status {
+        justify-self: center;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .editor-toolbar-actions {
+        justify-self: end;
     }
 
     .desktop-label {
         display: none !important;
     }
 
-    .toolbar-left .ghost-button,
-    .toolbar-actions .primary-button,
-    .toolbar-actions .ghost-button,
+    .editor-toolbar-left .ghost-button,
+    .editor-toolbar-actions .primary-button,
+    .editor-toolbar-actions .ghost-button,
     .editor-more-trigger {
         height: 32px;
         padding: 0 8px;
-    }
-
-    .toolbar-status {
-        gap: 6px;
     }
 
     .save-indicator {
@@ -2712,6 +2748,7 @@ textarea:focus {
         border: none;
         box-shadow: none;
         background: transparent;
+        max-width: 100%;
     }
 
     .editor-more-menu {
@@ -2727,16 +2764,11 @@ textarea:focus {
         font-size: 0.8125rem;
     }
 
-    .toolbar-left .ghost-button:nth-child(2),
-    .toolbar-actions > .danger-button {
-        display: none;
-    }
-
     .editor-more {
         display: block;
     }
 
-    .toolbar-actions > button {
+    .editor-toolbar-actions > button {
         flex: 0 0 auto;
     }
 

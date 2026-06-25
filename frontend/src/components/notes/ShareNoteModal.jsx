@@ -73,9 +73,9 @@ const ShareNoteModal = ({
     const ownerId = getId(owner)
     const currentUserId = getId(currentUser)
     const canManage = Boolean(ownerId && currentUserId && ownerId === currentUserId)
-    const ownerUser = canManage ? currentUser : owner && typeof owner === "object" ? owner : null
-    const ownerName = canManage ? "You" : ownerUser ? getDisplayName(ownerUser) : "Note owner"
-    const ownerInitialSource = ownerUser || currentUser || "Owner"
+    const ownerUser = canManage ? currentUser : (owner && typeof owner === "object" ? owner : null)
+    const ownerName = canManage ? "You" : (ownerUser ? getDisplayName(ownerUser) : "Note owner")
+    const ownerInitialSource = ownerUser ? ownerUser : (canManage ? currentUser : "Owner")
     const isOwnerOnline = isUserInList(ownerUser || currentUser, activeUsers)
     const isOwnerTyping = isUserInList(ownerUser || currentUser, typingUsers)
 

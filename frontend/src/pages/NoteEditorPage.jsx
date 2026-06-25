@@ -4,6 +4,7 @@ import { deleteNote, getNoteById, updateNote } from "../api/notes.api"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
 import { AvatarStack, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
 import { getDisplayName } from "../components/ui/uiUtils"
+import { useAuth } from "../context/AuthContext"
 import useNoteSocket from "../hooks/useNoteSocket"
 
 const getNoteFromResponse = (response) => {
@@ -17,11 +18,34 @@ const saveStatusClassMap = {
     "Save failed": "save-failed"
 }
 
+const isUserInList = (user, users = []) => {
+    const userKeys = [
+        user?._id,
+        user?.id,
+        user?.email,
+        user?.username
+    ].filter(Boolean)
+
+    return users.some((listUser) => {
+        const listUserKeys = [
+            listUser?._id,
+            listUser?.id,
+            listUser?.email,
+            listUser?.username
+        ].filter(Boolean)
+
+        return userKeys.some((key) => listUserKeys.includes(key))
+    })
+}
+
 const NoteEditorPage = () => {
     const { noteId } = useParams()
     const navigate = useNavigate()
+    const { user } = useAuth()
     const [title, setTitle] = useState("")
     const [content, setContent] = useState("")
+    const [noteOwner, setNoteOwner] = useState(null)
+    const [noteCollaborators, setNoteCollaborators] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
     const [saveStatus, setSaveStatus] = useState("Saved")
@@ -71,6 +95,8 @@ const NoteEditorPage = () => {
 
                 setTitle(note?.title || "")
                 setContent(note?.content || "")
+                setNoteOwner(note?.owner || note?.ownerId || note?.createdBy || null)
+                setNoteCollaborators(Array.isArray(note?.sharedWith) ? note.sharedWith : [])
                 hasLoadedNote.current = true
             } catch {
                 setError("Unable to load note.")
@@ -207,14 +233,15 @@ const NoteEditorPage = () => {
 
                 <div className="toolbar-actions">
                     <div className="toolbar-collaborators">
-                        <AvatarStack users={activeUsers} />
+                        <AvatarStack users={activeUsers} typingUsers={typingUsers} />
                         <span>{activeUsers.length} active</span>
                     </div>
-                    <button className="secondary-button" type="button" onClick={handleSave} disabled={isSaving}>
+                    <button className="secondary-button save-button" type="button" onClick={handleSave} disabled={isSaving}>
                         {isSaving ? "Saving..." : "Save"}
                     </button>
-                    <button className="primary-button" type="button" onClick={() => setIsShareOpen(true)}>
-                        Share
+                    <button className="secondary-button collaboration-entry-button" type="button" onClick={() => setIsShareOpen(true)}>
+                        <span className="desktop-label">Collaborators</span>
+                        <span className="mobile-label">Collab</span>
                     </button>
                     <button className="danger-button" type="button" onClick={() => setIsDeleteConfirmOpen(true)}>
                         Delete
@@ -239,7 +266,7 @@ const NoteEditorPage = () => {
                                         setIsShareOpen(true)
                                     }}
                                 >
-                                    Share
+                                    Collaborators
                                 </button>
                                 <button
                                     type="button"
@@ -318,8 +345,15 @@ const NoteEditorPage = () => {
                         <ul className="collaborator-list">
                             {activeUsers.map((activeUser, index) => (
                                 <li key={activeUser?._id || activeUser?.id || activeUser?.email || index}>
-                                    <span className="avatar">{getDisplayName(activeUser).slice(0, 2).toUpperCase()}</span>
-                                    <span>{getDisplayName(activeUser)}</span>
+                                    <span className={`avatar presence-avatar ${isUserInList(activeUser, typingUsers) ? "is-typing" : ""}`}>
+                                        {getDisplayName(activeUser).slice(0, 2).toUpperCase()}
+                                        <span className="presence-dot" aria-hidden="true" />
+                                        {isUserInList(activeUser, typingUsers) && <span className="typing-pulse" aria-hidden="true" />}
+                                    </span>
+                                    <span className="collaborator-live-info">
+                                        <span>{getDisplayName(activeUser)}</span>
+                                        <small>{isUserInList(activeUser, typingUsers) ? "Typing..." : "Online"}</small>
+                                    </span>
                                 </li>
                             ))}
                         </ul>
@@ -330,6 +364,11 @@ const NoteEditorPage = () => {
             {isShareOpen && (
                 <ShareNoteModal
                     noteId={noteId}
+                    owner={noteOwner}
+                    currentUser={user}
+                    fallbackCollaborators={noteCollaborators}
+                    activeUsers={activeUsers}
+                    typingUsers={typingUsers}
                     onClose={() => setIsShareOpen(false)}
                 />
             )}

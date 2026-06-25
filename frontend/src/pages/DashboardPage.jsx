@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { createNote, getNotes } from "../api/notes.api"
+import { createNote, getNotes, getSharedUsers } from "../api/notes.api"
 import { useAuth } from "../context/AuthContext"
-import { Badge, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
+import ShareNoteModal from "../components/notes/ShareNoteModal"
+import { Badge, CollaboratorAvatarGroup, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
 import UserMenu from "../components/ui/UserMenu"
 import { formatDateTime } from "../components/ui/uiUtils"
 
@@ -10,14 +11,28 @@ const getNotesFromResponse = (response) => {
     return response?.data?.notes || response?.data?.data?.notes || response?.data?.data || response?.data || []
 }
 
+const getSharedUsersFromResponse = (response) => {
+    return response?.data?.users || response?.data?.data?.users || response?.data?.data || response?.data || []
+}
+
 const getId = (value) => {
     return value?._id || value?.id || value
+}
+
+const getCollaboratorsFromNote = (note) => {
+    const collaborators = note?.sharedWith || note?.collaborators || note?.sharedUsers || []
+
+    return Array.isArray(collaborators)
+        ? collaborators.filter((collaborator) => collaborator && typeof collaborator === "object")
+        : []
 }
 
 const DashboardPage = () => {
     const navigate = useNavigate()
     const { user } = useAuth()
     const [notes, setNotes] = useState([])
+    const [noteCollaborators, setNoteCollaborators] = useState({})
+    const [collaborationNote, setCollaborationNote] = useState(null)
     const [title, setTitle] = useState("")
     const [query, setQuery] = useState("")
     const [activeFilter, setActiveFilter] = useState("all")
@@ -25,23 +40,59 @@ const DashboardPage = () => {
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState("")
 
-    const fetchNotes = async () => {
+    const isOwnedNote = useCallback((note) => {
+        return getId(note.owner || note.ownerId || note.createdBy) === getId(user)
+    }, [user])
+
+    const loadOwnedCollaborators = useCallback(async (nextNotes) => {
+        const ownedNotesWithShares = nextNotes.filter((note) => {
+            const sharedWith = note?.sharedWith || []
+            return isOwnedNote(note) && Array.isArray(sharedWith) && sharedWith.length > 0
+        })
+
+        if (ownedNotesWithShares.length === 0) {
+            return
+        }
+
+        const collaboratorEntries = await Promise.all(
+            ownedNotesWithShares.map(async (note) => {
+                const noteId = note._id || note.id
+
+                try {
+                    const response = await getSharedUsers(noteId)
+                    return [noteId, getSharedUsersFromResponse(response)]
+                } catch {
+                    return [noteId, getCollaboratorsFromNote(note)]
+                }
+            })
+        )
+
+        setNoteCollaborators((currentCollaborators) => ({
+            ...currentCollaborators,
+            ...Object.fromEntries(collaboratorEntries)
+        }))
+    }, [isOwnedNote])
+
+    const fetchNotes = useCallback(async () => {
         setIsLoading(true)
         setError("")
 
         try {
             const response = await getNotes()
-            setNotes(getNotesFromResponse(response))
+            const fetchedNotes = getNotesFromResponse(response)
+
+            setNotes(fetchedNotes)
+            await loadOwnedCollaborators(fetchedNotes)
         } catch {
             setError("Unable to load notes.")
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [loadOwnedCollaborators])
 
     useEffect(() => {
         fetchNotes()
-    }, [])
+    }, [fetchNotes])
 
     const handleCreateNote = async (event) => {
         event.preventDefault()
@@ -72,8 +123,20 @@ const DashboardPage = () => {
         createNoteFromTitle("Untitled note")
     }
 
-    const isOwnedNote = (note) => {
-        return getId(note.owner || note.ownerId || note.createdBy) === getId(user)
+    const getCollaboratorsForNote = (note) => {
+        const noteId = note._id || note.id
+        const collaborators = noteCollaborators[noteId] || getCollaboratorsFromNote(note)
+        const sharedWith = note?.sharedWith || []
+
+        if (
+            collaborators.length === 0 &&
+            Array.isArray(sharedWith) &&
+            sharedWith.some((collaborator) => getId(collaborator) === getId(user))
+        ) {
+            return [user]
+        }
+
+        return collaborators
     }
 
     const filteredByOwnership = notes.filter((note) => {
@@ -99,13 +162,13 @@ const DashboardPage = () => {
     const filterEmptyTitle = activeFilter === "owned"
         ? "No owned notes"
         : activeFilter === "shared"
-            ? "No shared notes"
+            ? "No shared notes yet"
             : "Start your first note"
 
     const filterEmptyDescription = activeFilter === "owned"
         ? "Notes you create will appear here."
         : activeFilter === "shared"
-            ? "Notes shared with you will appear here."
+            ? "When someone shares a note with you, it will appear here."
             : "Create a blank note and start writing with your team."
 
     return (
@@ -166,7 +229,6 @@ const DashboardPage = () => {
                         <h2 id="dashboard-title">Notes</h2>
                     </div>
                     <div className="search-wrap">
-                        <span aria-hidden="true">/</span>
                         <input
                             type="search"
                             value={query}
@@ -185,6 +247,7 @@ const DashboardPage = () => {
                     <EmptyState
                         title={query ? "No notes found" : filterEmptyTitle}
                         description={query ? "Try another search or clear the search field." : filterEmptyDescription}
+                        icon={!query && activeFilter === "shared" ? null : undefined}
                         action={!query && activeFilter !== "shared" && (
                             <button className="primary-button" type="button" onClick={handleCreateFirstNote}>
                                 {activeFilter === "owned" ? "Create owned note" : "Create first note"}
@@ -196,31 +259,62 @@ const DashboardPage = () => {
                         {filteredNotes.map((note) => {
                             const noteId = note._id || note.id
                             const isOwned = isOwnedNote(note)
+                            const collaborators = getCollaboratorsForNote(note)
 
                             return (
-                                <button
+                                <div
                                     className={`note-row ${selectedNoteId === noteId ? "selected" : ""}`}
-                                    type="button"
                                     role="listitem"
+                                    tabIndex={0}
                                     key={noteId}
                                     onClick={() => {
                                         setSelectedNoteId(noteId)
                                         navigate(`/notes/${noteId}`)
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter" || event.key === " ") {
+                                            event.preventDefault()
+                                            setSelectedNoteId(noteId)
+                                            navigate(`/notes/${noteId}`)
+                                        }
                                     }}
                                 >
                                     <span className="note-row-main">
                                         <strong>{note.title || "Untitled"}</strong>
                                         <small>{formatDateTime(note.updatedAt || note.createdAt)}</small>
                                     </span>
-                                    <Badge tone={isOwned ? "success" : "info"}>
-                                        {isOwned ? "Owned" : "Shared"}
-                                    </Badge>
-                                </button>
+                                    <span className="note-row-meta">
+                                        <CollaboratorAvatarGroup
+                                            users={collaborators}
+                                            onClick={(event) => {
+                                                event.stopPropagation()
+                                                setCollaborationNote(note)
+                                            }}
+                                            label={`Manage collaborators for ${note.title || "Untitled"}`}
+                                        />
+                                        <Badge tone={isOwned ? "success" : "info"}>
+                                            {isOwned ? "Owned" : "Shared"}
+                                        </Badge>
+                                    </span>
+                                </div>
                             )
                         })}
                     </div>
                 )}
             </section>
+
+            {collaborationNote && (
+                <ShareNoteModal
+                    noteId={collaborationNote._id || collaborationNote.id}
+                    owner={collaborationNote.owner || collaborationNote.ownerId || collaborationNote.createdBy}
+                    currentUser={user}
+                    fallbackCollaborators={getCollaboratorsForNote(collaborationNote)}
+                    onClose={async () => {
+                        setCollaborationNote(null)
+                        await fetchNotes()
+                    }}
+                />
+            )}
         </main>
     )
 }

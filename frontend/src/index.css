@@ -562,6 +562,7 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
     text-align: left;
     background: var(--surface);
     box-shadow: var(--shadow-soft);
+    cursor: pointer;
     transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background 160ms ease;
     overflow: hidden;
 }
@@ -577,13 +578,16 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
 }
 
 .note-row:hover,
+.note-row:focus-visible,
 .note-row.selected {
     border-color: var(--accent);
     box-shadow: 0 16px 34px color-mix(in srgb, var(--accent) 13%, transparent);
     transform: translateY(-2px);
+    outline: none;
 }
 
 .note-row:hover::before,
+.note-row:focus-visible::before,
 .note-row.selected::before {
     background: var(--accent);
 }
@@ -605,6 +609,73 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
 .note-row-main small {
     color: var(--muted);
     font-weight: 650;
+}
+
+.note-row-meta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex: 0 0 auto;
+}
+
+.collaborator-avatar-group {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    border: 0;
+    padding: 0 4px 0 0;
+    color: var(--text);
+    background: transparent;
+    cursor: pointer;
+}
+
+.collaborator-avatar {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-left: -8px;
+    border: 2px solid var(--surface);
+    border-radius: 999px;
+    color: #fff;
+    background: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 850;
+    line-height: 1;
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 18%, transparent);
+    transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.collaborator-avatar:first-child {
+    margin-left: 0;
+}
+
+.collaborator-avatar:nth-child(2n) {
+    background: var(--green);
+}
+
+.collaborator-avatar:nth-child(3n) {
+    background: #334155;
+}
+
+.collaborator-overflow {
+    color: var(--text);
+    background: var(--surface-soft);
+    box-shadow: none;
+}
+
+.collaborator-avatar-group:hover .collaborator-avatar,
+.collaborator-avatar-group:focus-visible .collaborator-avatar {
+    transform: translateY(-2px);
+}
+
+.collaborator-avatar-group:focus-visible {
+    border-radius: 999px;
+    outline: 3px solid var(--ring);
+    outline-offset: 3px;
 }
 
 .badge {
@@ -752,6 +823,14 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
 .toolbar-actions {
     flex-wrap: wrap;
     justify-content: flex-end;
+}
+
+.collaboration-entry-button {
+    gap: 6px;
+}
+
+.mobile-label {
+    display: none;
 }
 
 .editor-more {
@@ -917,6 +996,7 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
 }
 
 .avatar {
+    position: relative;
     display: inline-grid;
     place-items: center;
     width: 34px;
@@ -928,6 +1008,55 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
     background: #334155;
     font-size: 0.76rem;
     font-weight: 800;
+}
+
+.presence-avatar {
+    overflow: visible;
+}
+
+.presence-dot,
+.typing-pulse {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid var(--surface);
+    border-radius: 999px;
+    background: var(--green);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--green) 20%, transparent);
+    pointer-events: none;
+}
+
+.typing-pulse {
+    right: -3px;
+    bottom: -3px;
+    width: 15px;
+    height: 15px;
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--surface));
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    animation: typingPulse 1.15s ease-in-out infinite;
+}
+
+.presence-avatar.is-typing {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+@keyframes typingPulse {
+    0% {
+        opacity: 0.5;
+        transform: scale(0.72);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    100% {
+        opacity: 0.5;
+        transform: scale(0.72);
+    }
 }
 
 .avatar:first-child {
@@ -976,6 +1105,24 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
     margin-left: 0;
 }
 
+.collaborator-live-info {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.collaborator-live-info > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.collaborator-live-info small {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
 .editor-loading {
     width: min(900px, calc(100% - 32px));
     margin: 60px auto;
@@ -1004,6 +1151,11 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
     box-shadow: var(--shadow-strong);
 }
 
+.collaboration-modal-card {
+    width: min(560px, 100%);
+    gap: 18px;
+}
+
 .modal-header,
 .share-form {
     display: flex;
@@ -1014,6 +1166,99 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
 
 .share-form {
     align-items: stretch;
+}
+
+.collaboration-section {
+    display: grid;
+    gap: 10px;
+}
+
+.collaboration-section-title {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.collaboration-user-row,
+.collaboration-user-list li {
+    min-height: 54px;
+    background: var(--surface-soft);
+}
+
+.collaboration-user-row,
+.collaboration-user-info {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-width: 0;
+}
+
+.collaboration-user-row {
+    justify-content: flex-start;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 10px 12px;
+}
+
+.collaboration-user-avatar {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border: 2px solid var(--surface);
+    border-radius: 999px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--green));
+    font-size: 0.9rem;
+    font-weight: 900;
+    line-height: 1;
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.collaboration-user-row strong,
+.collaboration-user-info strong {
+    display: block;
+    overflow: hidden;
+    max-width: 260px;
+    color: var(--text);
+    font-size: 0.95rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.collaboration-user-row small,
+.collaboration-user-info small {
+    display: block;
+    overflow: hidden;
+    max-width: 260px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.collaboration-user-list li {
+    border-radius: 16px;
+    padding: 9px 10px;
+}
+
+.invite-collaborator {
+    display: grid;
+    gap: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+}
+
+.invite-button {
+    width: 100%;
+    justify-content: center;
 }
 
 .delete-confirm-modal p {
@@ -1768,6 +2013,17 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
         padding: 16px;
     }
 
+    .note-row-meta {
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .collaborator-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 0.72rem;
+    }
+
     .badge {
         align-self: flex-start;
     }
@@ -1816,7 +2072,7 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
         display: none;
     }
 
-    .toolbar-actions > .secondary-button {
+    .toolbar-actions > .save-button {
         order: 2;
         color: #fff;
         border-color: var(--accent);
@@ -1824,8 +2080,25 @@ main:not(.app-shell):not(.editor-shell):not(.settings-shell):not(.home-shell) bu
         box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 20%, transparent);
     }
 
-    .editor-more {
+    .collaboration-entry-button {
         order: 3;
+        padding: 0 8px;
+        color: var(--text);
+        border-color: var(--border);
+        background: var(--surface);
+        box-shadow: none;
+    }
+
+    .collaboration-entry-button .desktop-label {
+        display: none;
+    }
+
+    .collaboration-entry-button .mobile-label {
+        display: inline;
+    }
+
+    .editor-more {
+        order: 4;
     }
 
     .toolbar-left .ghost-button:first-child {

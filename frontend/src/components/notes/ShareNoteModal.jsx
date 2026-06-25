@@ -1,42 +1,139 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { getSharedUsers, removeSharedUser, shareNote } from "../../api/notes.api"
 import { EmptyState, ErrorState, LoadingRows } from "../ui/AppUI"
+import { getDisplayName, getInitials } from "../ui/uiUtils"
 
 const getSharedUsersFromResponse = (response) => {
     return response?.data?.users || response?.data?.data?.users || response?.data?.data || response?.data || []
 }
 
-const ShareNoteModal = ({ noteId, onClose }) => {
+const getId = (value) => {
+    return value?._id || value?.id || value
+}
+
+const isUserInList = (user, users = []) => {
+    const userKeys = [
+        user?._id,
+        user?.id,
+        user?.email,
+        user?.username
+    ].filter(Boolean)
+
+    return users.some((listUser) => {
+        const listUserKeys = [
+            listUser?._id,
+            listUser?.id,
+            listUser?.email,
+            listUser?.username
+        ].filter(Boolean)
+
+        return userKeys.some((key) => listUserKeys.includes(key))
+    })
+}
+
+const PresenceMarks = ({ isOnline, isTyping }) => (
+    <>
+        {isOnline && <span className="presence-dot" aria-hidden="true" />}
+        {isTyping && <span className="typing-pulse" aria-hidden="true" />}
+    </>
+)
+
+const getUsersFromNoteField = (users = [], currentUser) => {
+    return Array.isArray(users)
+        ? users
+            .map((user) => {
+                if (user && typeof user === "object") {
+                    return user
+                }
+
+                return getId(user) === getId(currentUser) ? currentUser : null
+            })
+            .filter(Boolean)
+        : []
+}
+
+const ShareNoteModal = ({
+    noteId,
+    owner,
+    currentUser,
+    fallbackCollaborators = [],
+    activeUsers = [],
+    typingUsers = [],
+    onClose
+}) => {
     const [recipient, setRecipient] = useState("")
     const [sharedUsers, setSharedUsers] = useState([])
+    const [isInviteOpen, setIsInviteOpen] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [isSharing, setIsSharing] = useState(false)
     const [error, setError] = useState("")
+    const panelRef = useRef(null)
+    const fallbackUsers = useMemo(
+        () => getUsersFromNoteField(fallbackCollaborators, currentUser),
+        [currentUser, fallbackCollaborators]
+    )
+    const ownerId = getId(owner)
+    const currentUserId = getId(currentUser)
+    const canManage = Boolean(ownerId && currentUserId && ownerId === currentUserId)
+    const ownerUser = canManage ? currentUser : owner && typeof owner === "object" ? owner : null
+    const ownerName = canManage ? "You" : ownerUser ? getDisplayName(ownerUser) : "Note owner"
+    const ownerInitialSource = ownerUser || currentUser || "Owner"
+    const isOwnerOnline = isUserInList(ownerUser || currentUser, activeUsers)
+    const isOwnerTyping = isUserInList(ownerUser || currentUser, typingUsers)
 
     const fetchSharedUsers = useCallback(async () => {
         setIsLoading(true)
         setError("")
 
+        if (!canManage) {
+            setSharedUsers(fallbackUsers)
+            setIsLoading(false)
+            return
+        }
+
         try {
             const response = await getSharedUsers(noteId)
             setSharedUsers(getSharedUsersFromResponse(response))
         } catch {
-            setError("Unable to load shared users.")
+            setSharedUsers(fallbackUsers)
+            setError("Unable to load collaborators.")
         } finally {
             setIsLoading(false)
         }
-    }, [noteId])
+    }, [canManage, fallbackUsers, noteId])
 
     useEffect(() => {
         fetchSharedUsers()
     }, [fetchSharedUsers])
 
+    useEffect(() => {
+        const handlePointerDown = (event) => {
+            if (!panelRef.current?.contains(event.target)) {
+                onClose()
+            }
+        }
+
+        const handleKeyDown = (event) => {
+            if (event.key === "Escape") {
+                onClose()
+            }
+        }
+
+        document.addEventListener("pointerdown", handlePointerDown)
+        document.addEventListener("keydown", handleKeyDown)
+
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown)
+            document.removeEventListener("keydown", handleKeyDown)
+        }
+    }, [onClose])
+
     const handleShare = async (event) => {
         event.preventDefault()
 
-        if (!recipient.trim()) {
+        if (!recipient.trim() || !canManage) {
             return
-        }   
+        }
 
         setIsSharing(true)
         setError("")
@@ -50,75 +147,130 @@ const ShareNoteModal = ({ noteId, onClose }) => {
 
             await shareNote(noteId, shareData)
             setRecipient("")
+            setIsInviteOpen(false)
             await fetchSharedUsers()
         } catch {
-            setError("Unable to share note.")
+            setError("Unable to invite collaborator.")
         } finally {
             setIsSharing(false)
         }
-}
+    }
 
     const handleRemoveUser = async (userId) => {
+        if (!canManage) {
+            return
+        }
+
         setError("")
 
         try {
             await removeSharedUser(noteId, userId)
             await fetchSharedUsers()
         } catch {
-            setError("Unable to remove shared user.")
+            setError("Unable to remove collaborator.")
         }
     }
 
     return (
         <div className="modal-backdrop">
-            <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="share-note-title">
+            <section
+                className="modal-card collaboration-modal-card"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="collaboration-panel-title"
+                ref={panelRef}
+            >
                 <header className="modal-header">
                     <div>
-                        <p className="eyebrow">Access</p>
-                        <h2 id="share-note-title">Share note</h2>
+                        <p className="eyebrow">Collaboration</p>
+                        <h2 id="collaboration-panel-title">Manage access</h2>
                     </div>
-                    <button className="icon-button" type="button" onClick={onClose} aria-label="Close share dialog">
+                    <button className="icon-button" type="button" onClick={onClose} aria-label="Close collaboration panel">
                         x
                     </button>
                 </header>
 
-                <form className="share-form" onSubmit={handleShare}>
-                    <input
-                        type="text"
-                        value={recipient}
-                        onChange={(event) => setRecipient(event.target.value)}
-                        placeholder="Email or username"
-                        aria-label="Email or username"
-                    />
-                    <button className="primary-button" type="submit" disabled={isSharing}>
-                        {isSharing ? "Sharing" : "Share"}
-                    </button>
-                </form>
+                <div className="collaboration-section">
+                    <p className="collaboration-section-title">Owner</p>
+                    <div className="collaboration-user-row">
+                        <span className={`collaboration-user-avatar presence-avatar ${isOwnerTyping ? "is-typing" : ""}`}>
+                            {getInitials(ownerInitialSource).slice(0, 1)}
+                            <PresenceMarks isOnline={isOwnerOnline} isTyping={isOwnerTyping} />
+                        </span>
+                        <span>
+                            <strong>{ownerName}</strong>
+                            <small>{isOwnerTyping ? "Typing..." : isOwnerOnline ? "Online" : "Owner"}</small>
+                        </span>
+                    </div>
+                </div>
 
                 <ErrorState message={error} />
 
-                {isLoading ? (
-                    <LoadingRows count={3} />
-                ) : sharedUsers.length === 0 ? (
-                    <EmptyState
-                        title="No shared users"
-                        description="Add a teammate above to give them access."
-                    />
-                ) : (
-                    <ul className="shared-user-list">
-                        {sharedUsers.map((user) => (
-                            <li key={user._id || user.id}>
-                                <span>{user.username || user.email}</span>
-                                <button
-                                    className="ghost-button"
-                                    type="button"
-                                    onClick={() => handleRemoveUser(user._id || user.id)}
-                                >
-                                    Remove
+                <div className="collaboration-section">
+                    <p className="collaboration-section-title">Editors</p>
+                    {isLoading ? (
+                        <LoadingRows count={3} />
+                    ) : sharedUsers.length === 0 ? (
+                        <EmptyState
+                            title="No editors yet"
+                            description="Invite a teammate to collaborate on this note."
+                        />
+                    ) : (
+                        <ul className="shared-user-list collaboration-user-list">
+                            {sharedUsers.map((user, index) => {
+                                const isOnline = isUserInList(user, activeUsers)
+                                const isTyping = isUserInList(user, typingUsers)
+
+                                return (
+                                    <li key={user._id || user.id || user.email || index}>
+                                        <span className="collaboration-user-info">
+                                            <span className={`collaboration-user-avatar presence-avatar ${isTyping ? "is-typing" : ""}`}>
+                                            {getInitials(user).slice(0, 1)}
+                                                <PresenceMarks isOnline={isOnline} isTyping={isTyping} />
+                                            </span>
+                                            <span>
+                                                <strong>{getDisplayName(user)}</strong>
+                                                <small>{isTyping ? "Typing..." : isOnline ? "Online" : user.email || "Editor"}</small>
+                                            </span>
+                                        </span>
+                                        {canManage && (
+                                            <button
+                                                className="ghost-button"
+                                                type="button"
+                                                onClick={() => handleRemoveUser(user._id || user.id)}
+                                            >
+                                                Remove
+                                            </button>
+                                        )}
+                                    </li>
+                                )
+                            })}
+                        </ul>
+                    )}
+                </div>
+
+                {canManage && (
+                    <div className="invite-collaborator">
+                        {isInviteOpen ? (
+                            <form className="share-form" onSubmit={handleShare}>
+                                <input
+                                    type="text"
+                                    value={recipient}
+                                    onChange={(event) => setRecipient(event.target.value)}
+                                    placeholder="Email or username"
+                                    aria-label="Email or username"
+                                    autoFocus
+                                />
+                                <button className="primary-button" type="submit" disabled={isSharing}>
+                                    {isSharing ? "Inviting" : "Invite"}
                                 </button>
-                            </li>
-                        ))}
-                    </ul>
+                            </form>
+                        ) : (
+                            <button className="secondary-button invite-button" type="button" onClick={() => setIsInviteOpen(true)}>
+                                Invite collaborator
+                            </button>
+                        )}
+                    </div>
                 )}
             </section>
         </div>

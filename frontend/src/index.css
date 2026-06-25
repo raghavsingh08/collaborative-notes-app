@@ -1327,6 +1327,7 @@ textarea:focus {
 
 .editor-more {
     position: relative;
+    display: block !important;
 }
 
 /* Editor overflow dropdown */

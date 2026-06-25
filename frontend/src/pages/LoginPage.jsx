@@ -1,9 +1,12 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import { IconAlertCircle, IconArrowLeft } from "../components/ui/Icons"
 import PasswordField from "../components/ui/PasswordField"
 import { useAuth } from "../context/AuthContext"
+import usePageTitle from "../hooks/usePageTitle"
 
 const LoginPage = () => {
+    usePageTitle("Sign in")
     const { login } = useAuth()
     const navigate = useNavigate()
     const [email, setEmail] = useState("")
@@ -28,16 +31,24 @@ const LoginPage = () => {
 
     return (
         <main>
-            <h1>Login</h1>
+            <Link className="auth-back" to="/">
+                <IconArrowLeft size={14} />
+                Collaborative Notes
+            </Link>
+
+            <h1>Welcome back</h1>
+            <p className="auth-subtitle">Sign in to continue to your workspace.</p>
 
             <form onSubmit={handleSubmit}>
-                <div>
-                    <label htmlFor="email">Email</label>
+                <div className="form-field">
+                    <label htmlFor="email">Email address</label>
                     <input
                         id="email"
                         type="email"
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
+                        placeholder="you@example.com"
+                        autoComplete="email"
                         required
                     />
                 </div>
@@ -50,15 +61,21 @@ const LoginPage = () => {
                     autoComplete="current-password"
                 />
 
-                {error && <p role="alert">{error}</p>}
+                {error && (
+                    <div className="auth-error" role="alert">
+                        <IconAlertCircle size={15} />
+                        {error}
+                    </div>
+                )}
 
                 <button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "Logging in..." : "Login"}
+                    {isSubmitting ? "Signing in…" : "Sign in"}
                 </button>
             </form>
 
-            <p>
-                Need an account? <Link to="/register">Register</Link>
+            <p className="auth-footer">
+                Don&rsquo;t have an account?{" "}
+                <Link to="/register">Create one</Link>
             </p>
         </main>
     )

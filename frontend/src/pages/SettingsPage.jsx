@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { updatePassword, updateProfile } from "../api/auth.api"
-import { ErrorState } from "../components/ui/AppUI"
+import { ErrorState, SuccessNotice } from "../components/ui/AppUI"
+import { IconArrowLeft, IconMoon, IconSun } from "../components/ui/Icons"
 import PasswordField from "../components/ui/PasswordField"
 import { useAuth } from "../context/AuthContext"
 import { useTheme } from "../context/ThemeContext"
+import usePageTitle from "../hooks/usePageTitle"
 
 const getMessageFromError = (error, fallback) => {
     return error?.response?.data?.message || fallback
@@ -15,6 +17,7 @@ const getUserFromResponse = (response) => {
 }
 
 const SettingsPage = () => {
+    usePageTitle("Settings")
     const navigate = useNavigate()
     const { user, fetchCurrentUser } = useAuth()
     const { theme, toggleTheme } = useTheme()
@@ -36,19 +39,13 @@ const SettingsPage = () => {
     }, [user])
 
     useEffect(() => {
-        if (!profileMessage) {
-            return undefined
-        }
-
+        if (!profileMessage) return undefined
         const timer = setTimeout(() => setProfileMessage(""), 3500)
         return () => clearTimeout(timer)
     }, [profileMessage])
 
     useEffect(() => {
-        if (!passwordMessage) {
-            return undefined
-        }
-
+        if (!passwordMessage) return undefined
         const timer = setTimeout(() => setPasswordMessage(""), 3500)
         return () => clearTimeout(timer)
     }, [passwordMessage])
@@ -67,9 +64,7 @@ const SettingsPage = () => {
     const handleProfileSubmit = async (event) => {
         event.preventDefault()
 
-        if (!hasProfileChanged) {
-            return
-        }
+        if (!hasProfileChanged) return
 
         setProfileError("")
         setProfileMessage("")
@@ -82,16 +77,11 @@ const SettingsPage = () => {
             })
             const updatedUser = getUserFromResponse(response)
 
-            if (updatedUser?.username) {
-                setUsername(updatedUser.username)
-            }
-
-            if (updatedUser?.email) {
-                setEmail(updatedUser.email)
-            }
+            if (updatedUser?.username) setUsername(updatedUser.username)
+            if (updatedUser?.email) setEmail(updatedUser.email)
 
             await fetchCurrentUser()
-            setProfileMessage("Profile updated.")
+            setProfileMessage("Profile updated successfully.")
             setIsEditingProfile(false)
         } catch (error) {
             setProfileError(getMessageFromError(error, "Unable to update profile."))
@@ -103,9 +93,7 @@ const SettingsPage = () => {
     const handlePasswordSubmit = async (event) => {
         event.preventDefault()
 
-        if (!canUpdatePassword) {
-            return
-        }
+        if (!canUpdatePassword) return
 
         setPasswordError("")
         setPasswordMessage("")
@@ -115,7 +103,7 @@ const SettingsPage = () => {
             await updatePassword({ oldPassword, newPassword })
             setOldPassword("")
             setNewPassword("")
-            setPasswordMessage("Password updated.")
+            setPasswordMessage("Password updated successfully.")
         } catch (error) {
             setPasswordError(getMessageFromError(error, "Unable to update password."))
         } finally {
@@ -126,8 +114,13 @@ const SettingsPage = () => {
     return (
         <main className="settings-shell">
             <header className="settings-header">
-                <button className="settings-back-button" type="button" onClick={() => navigate("/dashboard")}>
-                    Back
+                <button
+                    className="settings-back-button"
+                    type="button"
+                    onClick={() => navigate("/dashboard")}
+                >
+                    <IconArrowLeft size={14} />
+                    Dashboard
                 </button>
                 <div>
                     <p className="eyebrow">Workspace settings</p>
@@ -136,6 +129,7 @@ const SettingsPage = () => {
             </header>
 
             <section className="settings-grid">
+                {/* Profile Summary */}
                 <section className="settings-card profile-summary-card">
                     <div className="settings-card-header">
                         <div>
@@ -149,36 +143,52 @@ const SettingsPage = () => {
                             <strong>{user?.username || "User"}</strong>
                             <span>{user?.email || "No email available"}</span>
                         </div>
-                        <button className="secondary-button profile-edit-button" type="button" onClick={() => setIsEditingProfile(true)}>
+                        <button
+                            className="secondary-button profile-edit-button"
+                            type="button"
+                            onClick={() => setIsEditingProfile(true)}
+                        >
                             Edit profile
                         </button>
                     </div>
 
                     {isEditingProfile && (
                         <form className="profile-edit-form" onSubmit={handleProfileSubmit}>
-                            <label htmlFor="settings-username">Username</label>
-                            <input
-                                id="settings-username"
-                                type="text"
-                                value={username}
-                                onChange={(event) => setUsername(event.target.value)}
-                                required
-                            />
+                            <div className="form-field">
+                                <label htmlFor="settings-username">Username</label>
+                                <input
+                                    id="settings-username"
+                                    type="text"
+                                    value={username}
+                                    onChange={(event) => setUsername(event.target.value)}
+                                    required
+                                />
+                            </div>
 
-                            <label htmlFor="settings-email">Email</label>
-                            <input
-                                id="settings-email"
-                                type="email"
-                                value={email}
-                                onChange={(event) => setEmail(event.target.value)}
-                                required
-                            />
+                            <div className="form-field">
+                                <label htmlFor="settings-email">Email address</label>
+                                <input
+                                    id="settings-email"
+                                    type="email"
+                                    value={email}
+                                    onChange={(event) => setEmail(event.target.value)}
+                                    required
+                                />
+                            </div>
 
                             <div className="settings-actions">
-                                <button className="primary-button" type="submit" disabled={isSavingProfile || !hasProfileChanged}>
-                                    {isSavingProfile ? "Saving" : "Save profile"}
+                                <button
+                                    className="primary-button"
+                                    type="submit"
+                                    disabled={isSavingProfile || !hasProfileChanged}
+                                >
+                                    {isSavingProfile ? "Saving…" : "Save profile"}
                                 </button>
-                                <button className="ghost-button" type="button" onClick={handleCancelProfile}>
+                                <button
+                                    className="ghost-button"
+                                    type="button"
+                                    onClick={handleCancelProfile}
+                                >
                                     Cancel
                                 </button>
                             </div>
@@ -186,9 +196,10 @@ const SettingsPage = () => {
                     )}
 
                     <ErrorState message={profileError} />
-                    {profileMessage && <div className="notice notice-success" role="status">{profileMessage}</div>}
+                    <SuccessNotice message={profileMessage} />
                 </section>
 
+                {/* Theme */}
                 <section className="settings-card theme-card">
                     <div>
                         <p className="eyebrow">Appearance</p>
@@ -196,7 +207,7 @@ const SettingsPage = () => {
                     </div>
 
                     <p className="theme-current-label">
-                        Current Theme: <strong>{theme === "dark" ? "Dark" : "Light"}</strong>
+                        Current theme: <strong>{theme === "dark" ? "Dark" : "Light"}</strong>
                     </p>
 
                     <button
@@ -205,11 +216,18 @@ const SettingsPage = () => {
                         onClick={toggleTheme}
                         aria-pressed={theme === "dark"}
                     >
-                        <span className={theme === "light" ? "active" : ""}>Light</span>
-                        <span className={theme === "dark" ? "active" : ""}>Dark</span>
+                        <span className={theme === "light" ? "active" : ""}>
+                            <IconSun size={14} />
+                            Light
+                        </span>
+                        <span className={theme === "dark" ? "active" : ""}>
+                            <IconMoon size={14} />
+                            Dark
+                        </span>
                     </button>
                 </section>
 
+                {/* Security */}
                 <form className="settings-card security-card" onSubmit={handlePasswordSubmit}>
                     <div>
                         <p className="eyebrow">Security</p>
@@ -232,11 +250,16 @@ const SettingsPage = () => {
                         autoComplete="new-password"
                         minLength="8"
                     />
-                    <ErrorState message={passwordError} />
-                    {passwordMessage && <div className="notice notice-success" role="status">{passwordMessage}</div>}
 
-                    <button className="primary-button" type="submit" disabled={isSavingPassword || !canUpdatePassword}>
-                        {isSavingPassword ? "Updating" : "Update password"}
+                    <ErrorState message={passwordError} />
+                    <SuccessNotice message={passwordMessage} />
+
+                    <button
+                        className="primary-button"
+                        type="submit"
+                        disabled={isSavingPassword || !canUpdatePassword}
+                    >
+                        {isSavingPassword ? "Updating…" : "Update password"}
                     </button>
                 </form>
             </section>

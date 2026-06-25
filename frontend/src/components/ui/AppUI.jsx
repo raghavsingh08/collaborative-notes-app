@@ -1,13 +1,30 @@
+import { IconAlertCircle, IconCheck, IconNote, IconPlus, IconUsers } from "./Icons"
 import { getDisplayName, getInitials } from "./uiUtils"
 
+/* ─── Badge ──────────────────────────────────────────── */
 const Badge = ({ tone = "neutral", children }) => {
     return <span className={`badge badge-${tone}`}>{children}</span>
 }
 
-const EmptyState = ({ title, description, action, icon = "+" }) => {
+/* ─── Empty State ─────────────────────────────────────── */
+const emptyIcons = {
+    note: <IconNote size={18} />,
+    users: <IconUsers size={18} />,
+    plus: <IconPlus size={18} />,
+}
+
+const EmptyState = ({ title, description, action, icon = "note" }) => {
+    const iconEl = icon !== null
+        ? (typeof icon === "string" ? emptyIcons[icon] ?? emptyIcons.note : icon)
+        : null
+
     return (
         <section className="empty-state">
-            {icon !== null && <div className="empty-state-icon" aria-hidden="true">{icon}</div>}
+            {iconEl !== null && (
+                <div className="empty-state-icon" aria-hidden="true">
+                    {iconEl}
+                </div>
+            )}
             <h2>{title}</h2>
             <p>{description}</p>
             {action}
@@ -15,31 +32,42 @@ const EmptyState = ({ title, description, action, icon = "+" }) => {
     )
 }
 
+/* ─── Error State ─────────────────────────────────────── */
 const ErrorState = ({ message }) => {
-    if (!message) {
-        return null
-    }
+    if (!message) return null
 
     return (
         <div className="notice notice-error" role="alert">
+            <IconAlertCircle size={15} />
             {message}
         </div>
     )
 }
 
+/* ─── Loading Rows — Polished skeleton that mirrors note-row ── */
 const LoadingRows = ({ count = 5 }) => {
     return (
-        <div className="loading-list" aria-label="Loading">
+        <div className="loading-list" aria-label="Loading notes" aria-busy="true">
             {Array.from({ length: count }).map((_, index) => (
-                <div className="loading-row" key={index}>
-                    <span />
-                    <span />
+                <div className="loading-row" key={index} aria-hidden="true">
+                    <div className="loading-row-main">
+                        <span
+                            className="skel skel-title"
+                            style={{ width: `${48 + (index % 3) * 14}%` }}
+                        />
+                        <span className="skel skel-meta" />
+                    </div>
+                    <div className="loading-row-meta">
+                        <span className="skel skel-avatar" />
+                        <span className="skel skel-badge" />
+                    </div>
                 </div>
             ))}
         </div>
     )
 }
 
+/* ─── Avatar utilities ────────────────────────────────── */
 const getUserKey = (user) => {
     return user?._id || user?.id || user?.email || user?.username || user
 }
@@ -64,6 +92,7 @@ const isUserInList = (user, users = []) => {
     })
 }
 
+/* ─── Presence marks (dot + typing pulse) ─────────────── */
 const PresenceMarks = ({ isOnline, isTyping }) => (
     <>
         {isOnline && <span className="presence-dot" aria-hidden="true" />}
@@ -71,6 +100,7 @@ const PresenceMarks = ({ isOnline, isTyping }) => (
     </>
 )
 
+/* ─── Avatar Stack (toolbar) ──────────────────────────── */
 const AvatarStack = ({ users = [], limit = 4, typingUsers = [] }) => {
     const visibleUsers = users.slice(0, limit)
     const overflow = Math.max(users.length - visibleUsers.length, 0)
@@ -92,6 +122,7 @@ const AvatarStack = ({ users = [], limit = 4, typingUsers = [] }) => {
     )
 }
 
+/* ─── Collaborator Avatar Group (note cards) ──────────── */
 const CollaboratorAvatarGroup = ({
     users = [],
     limit = 3,
@@ -103,9 +134,7 @@ const CollaboratorAvatarGroup = ({
     const visibleUsers = users.filter(Boolean).slice(0, limit)
     const overflow = Math.max(users.length - visibleUsers.length, 0)
 
-    if (visibleUsers.length === 0) {
-        return null
-    }
+    if (visibleUsers.length === 0) return null
 
     return (
         <button
@@ -127,8 +156,21 @@ const CollaboratorAvatarGroup = ({
                     />
                 </span>
             ))}
-            {overflow > 0 && <span className="collaborator-avatar collaborator-overflow">+{overflow}</span>}
+            {overflow > 0 && (
+                <span className="collaborator-avatar collaborator-overflow">+{overflow}</span>
+            )}
         </button>
+    )
+}
+
+/* ─── Success Notice ──────────────────────────────────── */
+const SuccessNotice = ({ message }) => {
+    if (!message) return null
+    return (
+        <div className="notice notice-success" role="status">
+            <IconCheck size={15} />
+            {message}
+        </div>
     )
 }
 
@@ -138,5 +180,6 @@ export {
     CollaboratorAvatarGroup,
     EmptyState,
     ErrorState,
-    LoadingRows
+    LoadingRows,
+    SuccessNotice,
 }

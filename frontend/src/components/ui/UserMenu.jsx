@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../context/AuthContext"
+import { IconLogOut, IconSettings } from "./Icons"
 import { getDisplayName } from "./uiUtils"
 
 const getUserInitial = (user) => {
@@ -15,9 +16,7 @@ const UserMenu = () => {
     const [isOpen, setIsOpen] = useState(false)
 
     useEffect(() => {
-        if (!isOpen) {
-            return undefined
-        }
+        if (!isOpen) return undefined
 
         const handlePointerDown = (event) => {
             if (!menuRef.current?.contains(event.target)) {
@@ -26,9 +25,7 @@ const UserMenu = () => {
         }
 
         const handleKeyDown = (event) => {
-            if (event.key === "Escape") {
-                setIsOpen(false)
-            }
+            if (event.key === "Escape") setIsOpen(false)
         }
 
         document.addEventListener("pointerdown", handlePointerDown)
@@ -56,7 +53,7 @@ const UserMenu = () => {
             <button
                 className="user-menu-trigger"
                 type="button"
-                onClick={() => setIsOpen((currentValue) => !currentValue)}
+                onClick={() => setIsOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={isOpen}
                 aria-label="Open user menu"
@@ -67,10 +64,17 @@ const UserMenu = () => {
             {isOpen && (
                 <div className="user-menu-dropdown" role="menu">
                     <button type="button" role="menuitem" onClick={handleSettings}>
+                        <IconSettings size={14} />
                         Settings
                     </button>
-                    <button className="danger-menu-item" type="button" role="menuitem" onClick={handleLogout}>
-                        Logout
+                    <button
+                        className="danger-menu-item"
+                        type="button"
+                        role="menuitem"
+                        onClick={handleLogout}
+                    >
+                        <IconLogOut size={14} />
+                        Sign out
                     </button>
                 </div>
             )}

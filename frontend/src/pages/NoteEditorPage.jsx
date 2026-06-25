@@ -3,9 +3,19 @@ import { useNavigate, useParams } from "react-router-dom"
 import { deleteNote, getNoteById, updateNote } from "../api/notes.api"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
 import { AvatarStack, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
+import {
+    IconArrowLeft,
+    IconClose,
+    IconMoreHorizontal,
+    IconSave,
+    IconSettings,
+    IconTrash,
+    IconUsers,
+} from "../components/ui/Icons"
 import { getDisplayName } from "../components/ui/uiUtils"
 import { useAuth } from "../context/AuthContext"
 import useNoteSocket from "../hooks/useNoteSocket"
+import usePageTitle from "../hooks/usePageTitle"
 
 const getNoteFromResponse = (response) => {
     return response?.data?.note || response?.data?.data?.note || response?.data?.data || response?.data
@@ -50,6 +60,7 @@ const NoteEditorPage = () => {
     const [isSaving, setIsSaving] = useState(false)
     const [saveStatus, setSaveStatus] = useState("Saved")
     const [error, setError] = useState("")
+    const [loadError, setLoadError] = useState(false)
     const [isShareOpen, setIsShareOpen] = useState(false)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
     const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false)
@@ -57,10 +68,10 @@ const NoteEditorPage = () => {
     const isApplyingRemoteUpdate = useRef(false)
     const editorMoreRef = useRef(null)
 
+    usePageTitle(title || "Editor")
+
     const handleRemoteUpdate = useCallback((payload) => {
-        if (payload?.noteId !== noteId) {
-            return
-        }
+        if (payload?.noteId !== noteId) return
 
         isApplyingRemoteUpdate.current = true
         setTitle(payload.title || "")
@@ -68,10 +79,7 @@ const NoteEditorPage = () => {
     }, [noteId])
 
     const handleNoteSaved = useCallback((payload) => {
-        if (payload?.noteId !== noteId) {
-            return
-        }
-
+        if (payload?.noteId !== noteId) return
         setSaveStatus("Saved")
     }, [noteId])
 
@@ -100,6 +108,7 @@ const NoteEditorPage = () => {
                 hasLoadedNote.current = true
             } catch {
                 setError("Unable to load note.")
+                setLoadError(true)
             } finally {
                 setIsLoading(false)
             }
@@ -109,9 +118,7 @@ const NoteEditorPage = () => {
     }, [noteId])
 
     useEffect(() => {
-        if (!hasLoadedNote.current || isLoading) {
-            return undefined
-        }
+        if (!hasLoadedNote.current || isLoading) return undefined
 
         if (isApplyingRemoteUpdate.current) {
             isApplyingRemoteUpdate.current = false
@@ -133,9 +140,7 @@ const NoteEditorPage = () => {
     }, [socketError, saveStatus])
 
     useEffect(() => {
-        if (!isEditorMoreOpen) {
-            return undefined
-        }
+        if (!isEditorMoreOpen) return undefined
 
         const handlePointerDown = (event) => {
             if (!editorMoreRef.current?.contains(event.target)) {
@@ -144,9 +149,7 @@ const NoteEditorPage = () => {
         }
 
         const handleKeyDown = (event) => {
-            if (event.key === "Escape") {
-                setIsEditorMoreOpen(false)
-            }
+            if (event.key === "Escape") setIsEditorMoreOpen(false)
         }
 
         document.addEventListener("pointerdown", handlePointerDown)
@@ -160,7 +163,6 @@ const NoteEditorPage = () => {
 
     const handleTitleChange = (event) => {
         const nextTitle = event.target.value
-
         setTitle(nextTitle)
         setSaveStatus("Unsaved changes")
         emitUpdate(nextTitle, content)
@@ -169,7 +171,6 @@ const NoteEditorPage = () => {
 
     const handleContentChange = (event) => {
         const nextContent = event.target.value
-
         setContent(nextContent)
         setSaveStatus("Unsaved changes")
         emitUpdate(title, nextContent)
@@ -213,48 +214,94 @@ const NoteEditorPage = () => {
         )
     }
 
+    if (loadError) {
+        return (
+            <main className="editor-shell">
+                <section className="editor-loading">
+                    <EmptyState
+                        icon="note"
+                        title="Note not found"
+                        description="This note may have been deleted or you may not have access to it."
+                        action={
+                            <button
+                                className="primary-button"
+                                type="button"
+                                onClick={() => navigate("/dashboard")}
+                            >
+                                <IconArrowLeft size={14} />
+                                Back to dashboard
+                            </button>
+                        }
+                    />
+                </section>
+            </main>
+        )
+    }
+
     return (
         <main className="editor-shell">
             <header className="editor-toolbar">
+                {/* 1. Navigation */}
                 <div className="toolbar-left">
-                    <button className="ghost-button" type="button" onClick={() => navigate("/dashboard")}>
-                        Back
-                    </button>
-                    <button className="ghost-button" type="button" onClick={() => navigate("/settings")}>
-                        Settings
-                    </button>
-                    <span
-                        className={`save-indicator save-${saveStatusClassMap[saveStatus]}`}
-                        data-mobile-label={saveStatus === "Unsaved changes" ? "Unsaved" : saveStatus === "Saving..." ? "Saving" : saveStatus === "Save failed" ? "Error" : "Saved"}
+                    <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => navigate("/dashboard")}
+                        aria-label="Back to dashboard"
                     >
-                        {saveStatus}
-                    </span>
+                        <IconArrowLeft size={15} />
+                        <span className="desktop-label">Back</span>
+                    </button>
                 </div>
 
+                {/* 2. Status */}
+                <div className="toolbar-status">
+                    <span
+                        className={`save-indicator save-${saveStatusClassMap[saveStatus]}`}
+                        aria-live="polite"
+                    >
+                        {saveStatus === "Unsaved changes" ? "Unsaved" : saveStatus}
+                    </span>
+                    
+                    {activeUsers.length > 0 && (
+                        <div className="toolbar-collaborators" aria-label={`${activeUsers.length} active users`}>
+                            <AvatarStack users={activeUsers} typingUsers={typingUsers} />
+                            <span className="desktop-label">{activeUsers.length}</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* 3. Actions */}
                 <div className="toolbar-actions">
-                    <div className="toolbar-collaborators">
-                        <AvatarStack users={activeUsers} typingUsers={typingUsers} />
-                        <span>{activeUsers.length} active</span>
-                    </div>
-                    <button className="secondary-button save-button" type="button" onClick={handleSave} disabled={isSaving}>
-                        {isSaving ? "Saving..." : "Save"}
+                    <button
+                        className="ghost-button collaboration-entry-button"
+                        type="button"
+                        onClick={() => setIsShareOpen(true)}
+                    >
+                        <IconUsers size={15} />
+                        <span className="desktop-label">Share</span>
                     </button>
-                    <button className="secondary-button collaboration-entry-button" type="button" onClick={() => setIsShareOpen(true)}>
-                        <span className="desktop-label">Collaborators</span>
-                        <span className="mobile-label">Collab</span>
+
+                    <button
+                        className="primary-button save-button"
+                        type="button"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                    >
+                        <IconSave size={15} />
+                        <span className="desktop-label">{isSaving ? "Saving…" : "Save"}</span>
                     </button>
-                    <button className="danger-button" type="button" onClick={() => setIsDeleteConfirmOpen(true)}>
-                        Delete
-                    </button>
+
                     <div className="editor-more" ref={editorMoreRef}>
                         <button
-                            className="secondary-button editor-more-trigger"
+                            className="icon-button editor-more-trigger"
                             type="button"
-                            onClick={() => setIsEditorMoreOpen((currentValue) => !currentValue)}
+                            onClick={() => setIsEditorMoreOpen((v) => !v)}
                             aria-haspopup="menu"
                             aria-expanded={isEditorMoreOpen}
+                            aria-label="More options"
                         >
-                            More
+                            <IconMoreHorizontal size={15} />
                         </button>
                         {isEditorMoreOpen && (
                             <div className="editor-more-menu" role="menu">
@@ -266,6 +313,7 @@ const NoteEditorPage = () => {
                                         setIsShareOpen(true)
                                     }}
                                 >
+                                    <IconUsers size={14} />
                                     Collaborators
                                 </button>
                                 <button
@@ -276,6 +324,7 @@ const NoteEditorPage = () => {
                                         navigate("/settings")
                                     }}
                                 >
+                                    <IconSettings size={14} />
                                     Settings
                                 </button>
                                 <button
@@ -287,6 +336,7 @@ const NoteEditorPage = () => {
                                         setIsDeleteConfirmOpen(true)
                                     }}
                                 >
+                                    <IconTrash size={14} />
                                     Delete
                                 </button>
                             </div>
@@ -310,12 +360,14 @@ const NoteEditorPage = () => {
                         aria-label="Note title"
                     />
 
+                    <hr className="content-divider" aria-hidden="true" />
+
                     <textarea
                         id="content"
                         className="content-editor"
                         value={content}
                         onChange={handleContentChange}
-                        placeholder="Start writing..."
+                        placeholder="Start writing…"
                         aria-label="Note content"
                     />
                 </section>
@@ -330,7 +382,7 @@ const NoteEditorPage = () => {
                         <div className="typing-indicators" role="status" aria-live="polite">
                             {typingUsers.map((typingUser) => (
                                 <p key={typingUser._id || typingUser.id || typingUser.email || typingUser.username}>
-                                    {getDisplayName(typingUser)} is typing...
+                                    {getDisplayName(typingUser)} is typing…
                                 </p>
                             ))}
                         </div>
@@ -338,6 +390,7 @@ const NoteEditorPage = () => {
 
                     {activeUsers.length === 0 ? (
                         <EmptyState
+                            icon="users"
                             title="Just you for now"
                             description="Invite teammates to edit together in real time."
                         />
@@ -345,14 +398,20 @@ const NoteEditorPage = () => {
                         <ul className="collaborator-list">
                             {activeUsers.map((activeUser, index) => (
                                 <li key={activeUser?._id || activeUser?.id || activeUser?.email || index}>
-                                    <span className={`avatar presence-avatar ${isUserInList(activeUser, typingUsers) ? "is-typing" : ""}`}>
+                                    <span
+                                        className={`avatar presence-avatar ${isUserInList(activeUser, typingUsers) ? "is-typing" : ""}`}
+                                    >
                                         {getDisplayName(activeUser).slice(0, 2).toUpperCase()}
                                         <span className="presence-dot" aria-hidden="true" />
-                                        {isUserInList(activeUser, typingUsers) && <span className="typing-pulse" aria-hidden="true" />}
+                                        {isUserInList(activeUser, typingUsers) && (
+                                            <span className="typing-pulse" aria-hidden="true" />
+                                        )}
                                     </span>
                                     <span className="collaborator-live-info">
                                         <span>{getDisplayName(activeUser)}</span>
-                                        <small>{isUserInList(activeUser, typingUsers) ? "Typing..." : "Online"}</small>
+                                        <small>
+                                            {isUserInList(activeUser, typingUsers) ? "Typing…" : "Online"}
+                                        </small>
                                     </span>
                                 </li>
                             ))}
@@ -375,21 +434,39 @@ const NoteEditorPage = () => {
 
             {isDeleteConfirmOpen && (
                 <div className="modal-backdrop">
-                    <section className="modal-card delete-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-note-title">
+                    <section
+                        className="modal-card delete-confirm-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="delete-note-title"
+                    >
                         <header className="modal-header">
                             <div>
                                 <p className="eyebrow">Delete note</p>
                                 <h2 id="delete-note-title">Confirm deletion</h2>
                             </div>
+                            <button
+                                className="icon-button"
+                                type="button"
+                                onClick={() => setIsDeleteConfirmOpen(false)}
+                                aria-label="Cancel"
+                            >
+                                <IconClose size={15} />
+                            </button>
                         </header>
 
                         <p>Are you sure you want to delete this note? This action cannot be undone.</p>
 
                         <div className="modal-actions">
-                            <button className="ghost-button" type="button" onClick={() => setIsDeleteConfirmOpen(false)}>
+                            <button
+                                className="ghost-button"
+                                type="button"
+                                onClick={() => setIsDeleteConfirmOpen(false)}
+                            >
                                 Cancel
                             </button>
                             <button className="danger-button" type="button" onClick={handleDelete}>
+                                <IconTrash size={14} />
                                 Delete note
                             </button>
                         </div>

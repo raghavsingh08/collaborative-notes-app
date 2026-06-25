@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom"
+import { Route, Routes } from "react-router-dom"
 import ProtectedRoute from "./routes/ProtectedRoute"
 import HomePage from "./pages/HomePage"
 import LoginPage from "./pages/LoginPage"
@@ -6,6 +6,7 @@ import RegisterPage from "./pages/RegisterPage"
 import DashboardPage from "./pages/DashboardPage"
 import NoteEditorPage from "./pages/NoteEditorPage"
 import SettingsPage from "./pages/SettingsPage"
+import NotFoundPage from "./pages/NotFoundPage"
 
 const App = () => {
     return (
@@ -20,7 +21,7 @@ const App = () => {
                 <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
         </Routes>
     )
 }

@@ -4,8 +4,10 @@ import { createNote, getNotes, getSharedUsers } from "../api/notes.api"
 import { useAuth } from "../context/AuthContext"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
 import { Badge, CollaboratorAvatarGroup, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
+import { IconNote, IconPlus, IconSearch, IconUsers } from "../components/ui/Icons"
 import UserMenu from "../components/ui/UserMenu"
 import { formatDateTime } from "../components/ui/uiUtils"
+import usePageTitle from "../hooks/usePageTitle"
 
 const getNotesFromResponse = (response) => {
     return response?.data?.notes || response?.data?.data?.notes || response?.data?.data || response?.data || []
@@ -28,6 +30,7 @@ const getCollaboratorsFromNote = (note) => {
 }
 
 const DashboardPage = () => {
+    usePageTitle("Dashboard")
     const navigate = useNavigate()
     const { user } = useAuth()
     const [notes, setNotes] = useState([])
@@ -50,9 +53,7 @@ const DashboardPage = () => {
             return isOwnedNote(note) && Array.isArray(sharedWith) && sharedWith.length > 0
         })
 
-        if (ownedNotesWithShares.length === 0) {
-            return
-        }
+        if (ownedNotesWithShares.length === 0) return
 
         const collaboratorEntries = await Promise.all(
             ownedNotesWithShares.map(async (note) => {
@@ -67,8 +68,8 @@ const DashboardPage = () => {
             })
         )
 
-        setNoteCollaborators((currentCollaborators) => ({
-            ...currentCollaborators,
+        setNoteCollaborators((current) => ({
+            ...current,
             ...Object.fromEntries(collaboratorEntries)
         }))
     }, [isOwnedNote])
@@ -100,9 +101,7 @@ const DashboardPage = () => {
     }
 
     const createNoteFromTitle = async (nextTitle) => {
-        if (!nextTitle.trim()) {
-            return
-        }
+        if (!nextTitle.trim()) return
 
         try {
             const response = await createNote({ title: nextTitle.trim() })
@@ -140,14 +139,8 @@ const DashboardPage = () => {
     }
 
     const filteredByOwnership = notes.filter((note) => {
-        if (activeFilter === "owned") {
-            return isOwnedNote(note)
-        }
-
-        if (activeFilter === "shared") {
-            return !isOwnedNote(note)
-        }
-
+        if (activeFilter === "owned") return isOwnedNote(note)
+        if (activeFilter === "shared") return !isOwnedNote(note)
         return true
     })
 
@@ -159,6 +152,7 @@ const DashboardPage = () => {
     const ownedCount = notes.filter(isOwnedNote).length
     const sharedCount = Math.max(notes.length - ownedCount, 0)
     const displayName = user?.username || user?.name || user?.email || "Workspace"
+
     const filterEmptyTitle = activeFilter === "owned"
         ? "No owned notes"
         : activeFilter === "shared"
@@ -173,6 +167,7 @@ const DashboardPage = () => {
 
     return (
         <main className="app-shell">
+            {/* ── Sidebar ── */}
             <aside className="sidebar">
                 <div className="brand-row">
                     <UserMenu />
@@ -190,53 +185,73 @@ const DashboardPage = () => {
                             type="text"
                             value={title}
                             onChange={(event) => setTitle(event.target.value)}
-                            placeholder="Note title"
+                            placeholder="Note title…"
                             aria-label="Note title"
                         />
-                        <button type="submit">Create</button>
+                        <button type="submit">
+                            <IconPlus size={14} />
+                            Create
+                        </button>
                     </div>
                 </form>
 
-                <nav className="sidebar-nav" aria-label="Workspace">
+                <nav className="sidebar-nav" aria-label="Workspace filters">
                     <button
                         className={`nav-item ${activeFilter === "all" ? "active" : ""}`}
                         type="button"
                         onClick={() => setActiveFilter("all")}
                     >
-                        All notes <strong>{notes.length}</strong>
+                        <span className="nav-item-inner">
+                            <IconNote size={14} />
+                            All notes
+                        </span>
+                        <span className="nav-item-count">{notes.length}</span>
                     </button>
                     <button
                         className={`nav-item ${activeFilter === "owned" ? "active" : ""}`}
                         type="button"
                         onClick={() => setActiveFilter("owned")}
                     >
-                        Owned <strong>{ownedCount}</strong>
+                        <span className="nav-item-inner">
+                            <IconNote size={14} />
+                            Owned
+                        </span>
+                        <span className="nav-item-count">{ownedCount}</span>
                     </button>
                     <button
                         className={`nav-item ${activeFilter === "shared" ? "active" : ""}`}
                         type="button"
                         onClick={() => setActiveFilter("shared")}
                     >
-                        Shared <strong>{sharedCount}</strong>
+                        <span className="nav-item-inner">
+                            <IconUsers size={14} />
+                            Shared with me
+                        </span>
+                        <span className="nav-item-count">{sharedCount}</span>
                     </button>
                 </nav>
             </aside>
 
+            {/* ── Dashboard content ── */}
             <section className="dashboard-panel" aria-labelledby="dashboard-title">
                 <header className="dashboard-header">
                     <div>
                         <p className="eyebrow">Workspace</p>
                         <h2 id="dashboard-title">Notes</h2>
                     </div>
-                    <div className="search-wrap">
+                    <label className="search-wrap" htmlFor="search-notes">
+                        <span className="search-icon" aria-hidden="true">
+                            <IconSearch size={15} />
+                        </span>
                         <input
+                            id="search-notes"
                             type="search"
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Search notes"
+                            placeholder="Search notes…"
                             aria-label="Search notes"
                         />
-                    </div>
+                    </label>
                 </header>
 
                 <ErrorState message={error} />
@@ -246,13 +261,24 @@ const DashboardPage = () => {
                 ) : filteredNotes.length === 0 ? (
                     <EmptyState
                         title={query ? "No notes found" : filterEmptyTitle}
-                        description={query ? "Try another search or clear the search field." : filterEmptyDescription}
-                        icon={!query && activeFilter === "shared" ? null : undefined}
-                        action={!query && activeFilter !== "shared" && (
-                            <button className="primary-button" type="button" onClick={handleCreateFirstNote}>
-                                {activeFilter === "owned" ? "Create owned note" : "Create first note"}
-                            </button>
-                        )}
+                        description={
+                            query
+                                ? "Try another search or clear the search field."
+                                : filterEmptyDescription
+                        }
+                        icon={!query && activeFilter === "shared" ? "users" : "note"}
+                        action={
+                            !query && activeFilter !== "shared" && (
+                                <button
+                                    className="primary-button"
+                                    type="button"
+                                    onClick={handleCreateFirstNote}
+                                >
+                                    <IconPlus size={14} />
+                                    {activeFilter === "owned" ? "Create owned note" : "Create first note"}
+                                </button>
+                            )
+                        }
                     />
                 ) : (
                     <div className="notes-list" role="list">

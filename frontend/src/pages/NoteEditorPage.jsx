@@ -28,8 +28,10 @@ const NoteEditorPage = () => {
     const [error, setError] = useState("")
     const [isShareOpen, setIsShareOpen] = useState(false)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+    const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false)
     const hasLoadedNote = useRef(false)
     const isApplyingRemoteUpdate = useRef(false)
+    const editorMoreRef = useRef(null)
 
     const handleRemoteUpdate = useCallback((payload) => {
         if (payload?.noteId !== noteId) {
@@ -104,6 +106,32 @@ const NoteEditorPage = () => {
         }
     }, [socketError, saveStatus])
 
+    useEffect(() => {
+        if (!isEditorMoreOpen) {
+            return undefined
+        }
+
+        const handlePointerDown = (event) => {
+            if (!editorMoreRef.current?.contains(event.target)) {
+                setIsEditorMoreOpen(false)
+            }
+        }
+
+        const handleKeyDown = (event) => {
+            if (event.key === "Escape") {
+                setIsEditorMoreOpen(false)
+            }
+        }
+
+        document.addEventListener("pointerdown", handlePointerDown)
+        document.addEventListener("keydown", handleKeyDown)
+
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown)
+            document.removeEventListener("keydown", handleKeyDown)
+        }
+    }, [isEditorMoreOpen])
+
     const handleTitleChange = (event) => {
         const nextTitle = event.target.value
 
@@ -169,7 +197,10 @@ const NoteEditorPage = () => {
                     <button className="ghost-button" type="button" onClick={() => navigate("/settings")}>
                         Settings
                     </button>
-                    <span className={`save-indicator save-${saveStatusClassMap[saveStatus]}`}>
+                    <span
+                        className={`save-indicator save-${saveStatusClassMap[saveStatus]}`}
+                        data-mobile-label={saveStatus === "Unsaved changes" ? "Unsaved" : saveStatus === "Saving..." ? "Saving" : saveStatus === "Save failed" ? "Error" : "Saved"}
+                    >
                         {saveStatus}
                     </span>
                 </div>
@@ -188,6 +219,52 @@ const NoteEditorPage = () => {
                     <button className="danger-button" type="button" onClick={() => setIsDeleteConfirmOpen(true)}>
                         Delete
                     </button>
+                    <div className="editor-more" ref={editorMoreRef}>
+                        <button
+                            className="secondary-button editor-more-trigger"
+                            type="button"
+                            onClick={() => setIsEditorMoreOpen((currentValue) => !currentValue)}
+                            aria-haspopup="menu"
+                            aria-expanded={isEditorMoreOpen}
+                        >
+                            More
+                        </button>
+                        {isEditorMoreOpen && (
+                            <div className="editor-more-menu" role="menu">
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                        setIsEditorMoreOpen(false)
+                                        setIsShareOpen(true)
+                                    }}
+                                >
+                                    Share
+                                </button>
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                        setIsEditorMoreOpen(false)
+                                        navigate("/settings")
+                                    }}
+                                >
+                                    Settings
+                                </button>
+                                <button
+                                    className="danger-menu-item"
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                        setIsEditorMoreOpen(false)
+                                        setIsDeleteConfirmOpen(true)
+                                    }}
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </header>
 

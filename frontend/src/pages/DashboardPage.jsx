@@ -20,6 +20,7 @@ const DashboardPage = () => {
     const [notes, setNotes] = useState([])
     const [title, setTitle] = useState("")
     const [query, setQuery] = useState("")
+    const [activeFilter, setActiveFilter] = useState("all")
     const [selectedNoteId, setSelectedNoteId] = useState("")
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState("")
@@ -71,17 +72,41 @@ const DashboardPage = () => {
         createNoteFromTitle("Untitled note")
     }
 
-    const filteredNotes = notes.filter((note) => {
+    const isOwnedNote = (note) => {
+        return getId(note.owner || note.ownerId || note.createdBy) === getId(user)
+    }
+
+    const filteredByOwnership = notes.filter((note) => {
+        if (activeFilter === "owned") {
+            return isOwnedNote(note)
+        }
+
+        if (activeFilter === "shared") {
+            return !isOwnedNote(note)
+        }
+
+        return true
+    })
+
+    const filteredNotes = filteredByOwnership.filter((note) => {
         const noteTitle = note.title || "Untitled"
         return noteTitle.toLowerCase().includes(query.trim().toLowerCase())
     })
 
-    const ownedCount = notes.filter((note) => (
-        getId(note.owner || note.ownerId || note.createdBy) === getId(user)
-    )).length
-
+    const ownedCount = notes.filter(isOwnedNote).length
     const sharedCount = Math.max(notes.length - ownedCount, 0)
     const displayName = user?.username || user?.name || user?.email || "Workspace"
+    const filterEmptyTitle = activeFilter === "owned"
+        ? "No owned notes"
+        : activeFilter === "shared"
+            ? "No shared notes"
+            : "Start your first note"
+
+    const filterEmptyDescription = activeFilter === "owned"
+        ? "Notes you create will appear here."
+        : activeFilter === "shared"
+            ? "Notes shared with you will appear here."
+            : "Create a blank note and start writing with your team."
 
     return (
         <main className="app-shell">
@@ -110,9 +135,27 @@ const DashboardPage = () => {
                 </form>
 
                 <nav className="sidebar-nav" aria-label="Workspace">
-                    <span className="nav-item active">All notes <strong>{notes.length}</strong></span>
-                    <span className="nav-item">Owned <strong>{ownedCount}</strong></span>
-                    <span className="nav-item">Shared <strong>{sharedCount}</strong></span>
+                    <button
+                        className={`nav-item ${activeFilter === "all" ? "active" : ""}`}
+                        type="button"
+                        onClick={() => setActiveFilter("all")}
+                    >
+                        All notes <strong>{notes.length}</strong>
+                    </button>
+                    <button
+                        className={`nav-item ${activeFilter === "owned" ? "active" : ""}`}
+                        type="button"
+                        onClick={() => setActiveFilter("owned")}
+                    >
+                        Owned <strong>{ownedCount}</strong>
+                    </button>
+                    <button
+                        className={`nav-item ${activeFilter === "shared" ? "active" : ""}`}
+                        type="button"
+                        onClick={() => setActiveFilter("shared")}
+                    >
+                        Shared <strong>{sharedCount}</strong>
+                    </button>
                 </nav>
             </aside>
 
@@ -140,11 +183,11 @@ const DashboardPage = () => {
                     <LoadingRows count={6} />
                 ) : filteredNotes.length === 0 ? (
                     <EmptyState
-                        title={query ? "No notes found" : "Start your first note"}
-                        description={query ? "Try another search or clear the search field." : "Create a blank note and start writing with your team."}
-                        action={!query && (
+                        title={query ? "No notes found" : filterEmptyTitle}
+                        description={query ? "Try another search or clear the search field." : filterEmptyDescription}
+                        action={!query && activeFilter !== "shared" && (
                             <button className="primary-button" type="button" onClick={handleCreateFirstNote}>
-                                Create first note
+                                {activeFilter === "owned" ? "Create owned note" : "Create first note"}
                             </button>
                         )}
                     />
@@ -152,7 +195,7 @@ const DashboardPage = () => {
                     <div className="notes-list" role="list">
                         {filteredNotes.map((note) => {
                             const noteId = note._id || note.id
-                            const isOwned = getId(note.owner || note.ownerId || note.createdBy) === getId(user)
+                            const isOwned = isOwnedNote(note)
 
                             return (
                                 <button

@@ -124,18 +124,7 @@ const DashboardPage = () => {
 
     const getCollaboratorsForNote = (note) => {
         const noteId = note._id || note.id
-        const collaborators = noteCollaborators[noteId] || getCollaboratorsFromNote(note)
-        const sharedWith = note?.sharedWith || []
-
-        if (
-            collaborators.length === 0 &&
-            Array.isArray(sharedWith) &&
-            sharedWith.some((collaborator) => getId(collaborator) === getId(user))
-        ) {
-            return [user]
-        }
-
-        return collaborators
+        return noteCollaborators[noteId] || getCollaboratorsFromNote(note)
     }
 
     const filteredByOwnership = notes.filter((note) => {

@@ -70,6 +70,10 @@ const NoteEditorPage = () => {
     const isApplyingRemoteUpdate = useRef(false)
     const editorMoreRef = useRef(null)
 
+    const currentUserId = String(user?._id || user?.id || "")
+    const ownerId = String(noteOwner?._id || noteOwner?.id || noteOwner?.ownerId || noteOwner?.createdBy || noteOwner || "")
+    const isOwner = Boolean(currentUserId && ownerId && currentUserId === ownerId && currentUserId !== "undefined" && ownerId !== "undefined")
+
     usePageTitle(title || "Editor")
 
     const handleRemoteUpdate = useCallback((payload) => {
@@ -326,35 +330,29 @@ const NoteEditorPage = () => {
                                     role="menuitem"
                                     onClick={() => {
                                         setIsEditorMoreOpen(false)
-                                        setIsShareOpen(true)
-                                    }}
-                                >
-                                    <IconUsers size={14} />
-                                    Collaborators
-                                </button>
-                                <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => {
-                                        setIsEditorMoreOpen(false)
                                         navigate("/settings")
                                     }}
                                 >
                                     <IconSettings size={14} />
                                     Settings
                                 </button>
-                                <button
-                                    className="danger-menu-item"
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => {
-                                        setIsEditorMoreOpen(false)
-                                        setIsDeleteConfirmOpen(true)
-                                    }}
-                                >
-                                    <IconTrash size={14} />
-                                    Delete
-                                </button>
+                                {isOwner && (
+                                    <>
+                                        <div className="menu-separator" aria-hidden="true" />
+                                        <button
+                                            className="danger-menu-item"
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={() => {
+                                                setIsEditorMoreOpen(false)
+                                                setIsDeleteConfirmOpen(true)
+                                            }}
+                                        >
+                                            <IconTrash size={14} />
+                                            Delete
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>

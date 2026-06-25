@@ -7,7 +7,7 @@ import usePageTitle from "../hooks/usePageTitle"
 
 const RegisterPage = () => {
     usePageTitle("Create account")
-    const { register } = useAuth()
+    const { login, register } = useAuth()
     const navigate = useNavigate()
     const [username, setUsername] = useState("")
     const [email, setEmail] = useState("")
@@ -22,7 +22,8 @@ const RegisterPage = () => {
 
         try {
             await register({ username, email, password })
-            navigate("/login")
+            await login({ email, password })
+            navigate("/dashboard", { replace: true })
         } catch (err) {
             setError(
                 err.response?.data?.message ||

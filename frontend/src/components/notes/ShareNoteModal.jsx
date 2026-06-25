@@ -83,11 +83,8 @@ const ShareNoteModal = ({
         setIsLoading(true)
         setError("")
 
-        if (!canManage) {
-            setSharedUsers(fallbackUsers)
-            setIsLoading(false)
-            return
-        }
+        // Editors are now authorized to fetch the full roster from the backend
+        // so we don't need to artificially short-circuit them.
 
         try {
             const response = await getSharedUsers(noteId)
@@ -191,7 +188,15 @@ const ShareNoteModal = ({
                         </span>
                         <span>
                             <strong>{ownerName}</strong>
-                            <small>{isOwnerTyping ? "Typing…" : isOwnerOnline ? "Online" : "Owner"}</small>
+                            <small className="status-indicator">
+                                {isOwnerTyping ? (
+                                    <><span className="status-dot-inline typing" aria-hidden="true" /> Typing…</>
+                                ) : isOwnerOnline ? (
+                                    <><span className="status-dot-inline online" aria-hidden="true" /> Online</>
+                                ) : (
+                                    <><span className="status-dot-inline offline" aria-hidden="true" /> Owner</>
+                                )}
+                            </small>
                         </span>
                     </div>
                 </div>
@@ -224,7 +229,15 @@ const ShareNoteModal = ({
                                             </span>
                                             <span>
                                                 <strong>{getDisplayName(user)}</strong>
-                                                <small>{isTyping ? "Typing…" : isOnline ? "Online" : user.email || "Editor"}</small>
+                                                <small className="status-indicator">
+                                                    {isTyping ? (
+                                                        <><span className="status-dot-inline typing" aria-hidden="true" /> Typing…</>
+                                                    ) : isOnline ? (
+                                                        <><span className="status-dot-inline online" aria-hidden="true" /> Online</>
+                                                    ) : (
+                                                        <><span className="status-dot-inline offline" aria-hidden="true" /> Offline</>
+                                                    )}
+                                                </small>
                                             </span>
                                         </span>
                                         {canManage && (

@@ -37,7 +37,9 @@ const getAllNotes = asyncHandler(async (req, res) => {
             { owner: req.user._id },
             { sharedWith: req.user._id }
         ]
-    }).sort({ updatedAt: -1 }).populate("owner", "username email name")
+    }).sort({ updatedAt: -1 })
+      .populate("owner", "username email name")
+      .populate("sharedWith", "username email name")
 
     return res
         .status(200)
@@ -230,8 +232,11 @@ const getSharedUsers = asyncHandler(async (req, res) => {
 
     const note = await Note.findOne({
         _id: noteId,
-        owner: req.user._id
-    }).populate("sharedWith", "username email")
+        $or: [
+            { owner: req.user._id },
+            { sharedWith: req.user._id }
+        ]
+    }).populate("sharedWith", "username email name")
 
     if (!note) {
         throw new ApiError(404, "Note not found")

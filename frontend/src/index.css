@@ -1040,7 +1040,6 @@ textarea:focus {
 .collaborator-overflow {
     color: var(--text);
     background: var(--surface-soft);
-    border: 2px solid var(--border);
 }
 
 .collaborator-avatar.is-owner {
@@ -1328,7 +1327,6 @@ textarea:focus {
 
 .editor-more {
     position: relative;
-    display: none;
 }
 
 /* Editor overflow dropdown */
@@ -1347,6 +1345,13 @@ textarea:focus {
     box-shadow: var(--shadow-lg);
     animation: menuOpen 150ms cubic-bezier(0.16, 1, 0.3, 1) both;
     transform-origin: top right;
+}
+
+.menu-separator {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+    width: 100%;
 }
 
 .editor-more-menu button {
@@ -1617,6 +1622,32 @@ textarea:focus {
     border-color: color-mix(in srgb, var(--accent) 28%, var(--surface));
     background: color-mix(in srgb, var(--accent) 28%, transparent);
     animation: typingPulse 1.2s ease-in-out infinite;
+}
+
+/* ─── Inline Status Indicators ────────────────────────── */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-dot-inline {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+}
+
+.status-dot-inline.online {
+    background: var(--green);
+}
+
+.status-dot-inline.offline {
+    background: var(--border-strong);
+}
+
+.status-dot-inline.typing {
+    background: var(--accent);
 }
 
 .presence-avatar.is-typing {
@@ -2446,9 +2477,6 @@ textarea:focus {
     }
 
     /* Left toolbar override removed to allow flex space-between to naturally split left/right */
-    .editor-more {
-        display: block;
-    }
 
     .toolbar-actions > button {
         flex: 0 0 auto;

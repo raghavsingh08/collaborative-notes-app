@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import { IconAlertCircle, IconCheck, IconNote, IconPlus, IconUsers } from "./Icons"
 import { getDisplayName, getInitials } from "./uiUtils"
 
@@ -127,12 +128,23 @@ const CollaboratorAvatarGroup = ({
     users = [],
     owner = null,
     currentUser = null,
-    limit = 3,
+    desktopLimit = 7,
+    mobileLimit = 4,
     activeUsers = [],
     typingUsers = [],
     onClick,
     label = "Manage collaborators"
 }) => {
+    const [isMobile, setIsMobile] = useState(false)
+
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth <= 520)
+        checkMobile()
+        window.addEventListener("resize", checkMobile)
+        return () => window.removeEventListener("resize", checkMobile)
+    }, [])
+
+    const limit = isMobile ? mobileLimit : desktopLimit
     let stackUsers = []
     
     const ownerKey = owner ? getUserKey(owner) : null
@@ -143,9 +155,13 @@ const CollaboratorAvatarGroup = ({
         // Logged-in user is the owner: show ONLY collaborators (do not include owner's own avatar)
         stackUsers = users.filter(u => getUserKey(u) !== ownerKey)
     } else {
-        // Logged-in user is an editor: show Owner FIRST, then editors
-        const editors = users.filter(u => getUserKey(u) !== ownerKey)
-        stackUsers = owner ? [owner, ...editors] : [...editors]
+        // Logged-in user is an editor: show Owner FIRST, then Current User (if editor), then other editors
+        const otherEditors = users.filter(u => getUserKey(u) !== ownerKey && getUserKey(u) !== currentUserKey)
+        const currentEditor = users.find(u => getUserKey(u) === currentUserKey) || (currentUserKey && users.length > 0 ? currentUser : null)
+        
+        if (owner) stackUsers.push(owner)
+        if (currentEditor) stackUsers.push(currentEditor)
+        stackUsers.push(...otherEditors)
     }
 
     const visibleUsers = stackUsers.filter(Boolean).slice(0, limit)

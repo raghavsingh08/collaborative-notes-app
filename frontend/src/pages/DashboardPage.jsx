@@ -43,6 +43,11 @@ const DashboardPage = () => {
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState("")
 
+    // Derived state for validation
+    const trimmedTitle = title.trim()
+    const isTitleValid = trimmedTitle.length >= 2
+    const showTitleError = title.length > 0 && !isTitleValid
+
     const isOwnedNote = useCallback((note) => {
         return getId(note.owner || note.ownerId || note.createdBy) === getId(user)
     }, [user])
@@ -97,14 +102,17 @@ const DashboardPage = () => {
 
     const handleCreateNote = async (event) => {
         event.preventDefault()
-        await createNoteFromTitle(title)
+        if (isTitleValid) {
+            await createNoteFromTitle(trimmedTitle)
+        }
     }
 
     const createNoteFromTitle = async (nextTitle) => {
-        if (!nextTitle.trim()) return
+        const titleToCreate = nextTitle.trim()
+        if (titleToCreate.length < 2) return
 
         try {
-            const response = await createNote({ title: nextTitle.trim() })
+            const response = await createNote({ title: titleToCreate })
             const note = response?.data?.note || response?.data?.data?.note || response?.data?.data || response?.data
 
             setTitle("")
@@ -176,12 +184,19 @@ const DashboardPage = () => {
                             onChange={(event) => setTitle(event.target.value)}
                             placeholder="Note title…"
                             aria-label="Note title"
+                            aria-invalid={showTitleError}
+                            aria-describedby={showTitleError ? "title-error" : undefined}
                         />
-                        <button type="submit">
+                        <button type="submit" disabled={!isTitleValid}>
                             <IconPlus size={14} />
                             Create
                         </button>
                     </div>
+                    {showTitleError && (
+                        <p id="title-error" className="validation-message" role="alert">
+                            Please enter a title with at least 2 characters.
+                        </p>
+                    )}
                 </form>
 
                 <nav className="sidebar-nav" aria-label="Workspace filters">

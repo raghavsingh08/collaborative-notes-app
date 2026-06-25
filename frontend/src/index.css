@@ -1493,6 +1493,13 @@ textarea:focus {
     opacity: 0.6;
 }
 
+.validation-message {
+    font-size: 0.75rem;
+    color: var(--danger);
+    margin-top: 4px;
+    padding-left: 4px;
+}
+
 /* Content divider between title and body */
 .content-divider {
     height: 1px;

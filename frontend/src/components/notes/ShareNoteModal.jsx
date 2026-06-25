@@ -64,6 +64,7 @@ const ShareNoteModal = ({
     const [isInviteOpen, setIsInviteOpen] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [isSharing, setIsSharing] = useState(false)
+    const [userToRemove, setUserToRemove] = useState(null)
     const [error, setError] = useState("")
     const panelRef = useRef(null)
     const fallbackUsers = useMemo(
@@ -103,11 +104,18 @@ const ShareNoteModal = ({
 
     useEffect(() => {
         const handlePointerDown = (event) => {
+            if (userToRemove) return
             if (!panelRef.current?.contains(event.target)) onClose()
         }
 
         const handleKeyDown = (event) => {
-            if (event.key === "Escape") onClose()
+            if (event.key === "Escape") {
+                if (userToRemove) {
+                    setUserToRemove(null)
+                } else {
+                    onClose()
+                }
+            }
         }
 
         document.addEventListener("pointerdown", handlePointerDown)
@@ -117,7 +125,7 @@ const ShareNoteModal = ({
             document.removeEventListener("pointerdown", handlePointerDown)
             document.removeEventListener("keydown", handleKeyDown)
         }
-    }, [onClose])
+    }, [onClose, userToRemove])
 
     const handleShare = async (event) => {
         event.preventDefault()
@@ -141,13 +149,15 @@ const ShareNoteModal = ({
         }
     }
 
-    const handleRemoveUser = async (userId) => {
-        if (!canManage) return
+    const executeRemoveUser = async () => {
+        if (!canManage || !userToRemove) return
 
+        const userId = userToRemove._id || userToRemove.id
         setError("")
 
         try {
             await removeSharedUser(noteId, userId)
+            setUserToRemove(null)
             await fetchSharedUsers()
         } catch {
             setError("Unable to remove collaborator.")
@@ -155,9 +165,10 @@ const ShareNoteModal = ({
     }
 
     return (
-        <div className="modal-backdrop">
-            <section
-                className="modal-card collaboration-modal-card"
+        <>
+            <div className="modal-backdrop">
+                <section
+                    className="modal-card collaboration-modal-card"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="collaboration-panel-title"
@@ -244,7 +255,7 @@ const ShareNoteModal = ({
                                             <button
                                                 className="ghost-button"
                                                 type="button"
-                                                onClick={() => handleRemoveUser(user._id || user.id)}
+                                                onClick={() => setUserToRemove(user)}
                                             >
                                                 Remove
                                             </button>
@@ -286,7 +297,54 @@ const ShareNoteModal = ({
                     </div>
                 )}
             </section>
-        </div>
+            </div>
+
+            {userToRemove && (
+                <div 
+                    className="modal-backdrop" 
+                    style={{ zIndex: 60 }}
+                    onPointerDown={(e) => {
+                        if (e.target === e.currentTarget) setUserToRemove(null)
+                    }}
+                >
+                    <section
+                        className="modal-card delete-confirm-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="remove-user-title"
+                    >
+                        <header className="modal-header">
+                            <div>
+                                <h2 id="remove-user-title">Confirm removal</h2>
+                            </div>
+                            <button
+                                className="icon-button"
+                                type="button"
+                                onClick={() => setUserToRemove(null)}
+                                aria-label="Cancel"
+                            >
+                                <IconClose size={15} />
+                            </button>
+                        </header>
+
+                        <p>Are you sure you want to remove <strong>{getDisplayName(userToRemove)}</strong> from this note?</p>
+
+                        <div className="modal-actions">
+                            <button
+                                className="ghost-button"
+                                type="button"
+                                onClick={() => setUserToRemove(null)}
+                            >
+                                Cancel
+                            </button>
+                            <button className="danger-button" type="button" onClick={executeRemoveUser}>
+                                Remove
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            )}
+        </>
     )
 }
 

@@ -1,6 +1,7 @@
 import mongoose from "mongoose"
 import Note from "../models/note.model.js"
 import User from "../models/user.model.js"
+import { createNoteVersionSnapshot } from "../utils/noteVersionSnapshots.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
@@ -68,7 +69,7 @@ const getNoteById = asyncHandler(async (req, res) => {
 
 const updateNote = asyncHandler(async (req, res) => {
     const { noteId } = req.params
-    const { title, content, contentJson, editorVersion } = req.body
+    const { title, content, contentJson, editorVersion, saveType } = req.body
 
     if (!mongoose.isValidObjectId(noteId)) {
         throw new ApiError(400, "Invalid note id")
@@ -113,6 +114,14 @@ const updateNote = asyncHandler(async (req, res) => {
 
     if (!note) {
         throw new ApiError(404, "Note not found")
+    }
+
+    if (saveType === "manual") {
+        await createNoteVersionSnapshot({
+            note,
+            createdBy: req.user._id,
+            reason: "manual_save"
+        })
     }
 
     return res

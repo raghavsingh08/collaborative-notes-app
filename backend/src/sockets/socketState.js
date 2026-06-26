@@ -8,6 +8,20 @@ const getSocketServer = () => ioInstance
 
 const getV2NoteRoom = (noteId) => `note:v2:${String(noteId).trim()}`
 
+const emitNoteRestored = ({ noteId, versionId, restoredBy }) => {
+    const io = getSocketServer()
+
+    if (!io || !noteId || !versionId) {
+        return
+    }
+
+    io.to(getV2NoteRoom(noteId)).emit("note:restored", {
+        noteId: String(noteId),
+        versionId: String(versionId),
+        restoredBy: restoredBy ? String(restoredBy) : null
+    })
+}
+
 // Comment sockets are invalidation notifications only; clients refetch from MongoDB.
 const emitCommentUpdate = ({ noteId, threadId, replyId, action, updatedBy }) => {
     const io = getSocketServer()
@@ -32,6 +46,7 @@ const emitCommentUpdate = ({ noteId, threadId, replyId, action, updatedBy }) => 
 
 export {
     emitCommentUpdate,
+    emitNoteRestored,
     getSocketServer,
     setSocketServer
 }

@@ -6,6 +6,7 @@ import { errorHandler } from "./middleware/error.middleware.js"
 import authRouter from "./routes/auth.routes.js"
 import commentRouter from "./routes/comment.routes.js"
 import noteRouter from "./routes/note.routes.js"
+import noteVersionRouter from "./routes/noteVersion.routes.js"
 const app = express()
 
 app.use(cors(corsOptions))
@@ -20,6 +21,7 @@ app.get("/", (req, res) => {
 app.use("/api/v1/auth", authRouter)
 app.use("/api/v1/notes", noteRouter)
 app.use("/api/v1", commentRouter)
+app.use("/api/v1", noteVersionRouter)
 app.use(errorHandler)
 export { app }
 

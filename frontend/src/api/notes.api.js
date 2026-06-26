@@ -32,6 +32,18 @@ const getSharedUsers = (noteId) => {
     return api.get(`/notes/${noteId}/shared-users`)
 }
 
+const getNoteVersions = (noteId) => {
+    return api.get(`/notes/${noteId}/versions`)
+}
+
+const getNoteVersionById = (noteId, versionId) => {
+    return api.get(`/notes/${noteId}/versions/${versionId}`)
+}
+
+const restoreNoteVersion = (noteId, versionId) => {
+    return api.post(`/notes/${noteId}/versions/${versionId}/restore`)
+}
+
 export {
     getNotes,
     createNote,
@@ -40,5 +52,8 @@ export {
     deleteNote,
     shareNote,
     removeSharedUser,
-    getSharedUsers
+    getSharedUsers,
+    getNoteVersions,
+    getNoteVersionById,
+    restoreNoteVersion
 }

@@ -13,11 +13,14 @@ import {
     IconUsers,
 } from "../components/ui/Icons"
 import { useAuth } from "../context/AuthContext"
+import socket from "../api/socket"
 import useNoteSocketV2 from "../hooks/useNoteSocketV2"
 import usePageTitle from "../hooks/usePageTitle"
 import TipTapEditor from '../components/editor/TipTapEditor'
 import { CollaborationProvider, useCollaboration } from "../collaboration/CollaborationProvider"
 import CommentsSidebar from "../components/comments/CommentsSidebar"
+import VersionHistoryPanel from "../components/versions/VersionHistoryPanel"
+import { History } from "lucide-react"
 
 const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onSelectionChange, onCommentClicked }) => {
     const { ydoc, awareness, syncStatus } = useCollaboration()
@@ -276,6 +279,10 @@ const NoteEditorV2Page = () => {
     const [editorSelection, setEditorSelection] = useState(null)
     const editorRef = useRef(null)
 
+    // Step 18 Integration State
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+    const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0)
+
     const hasLoadedNote = useRef(false)
     const editorMoreRef = useRef(null)
     const latestPayloadRef = useRef({ content: "", contentJson: null })
@@ -316,6 +323,22 @@ const NoteEditorV2Page = () => {
         }
 
         fetchNote()
+    }, [noteId])
+
+    useEffect(() => {
+        const handleNoteRestored = (payload) => {
+            if (String(payload?.noteId) !== String(noteId)) return
+
+            setTimeout(() => {
+                window.location.reload()
+            }, 100)
+        }
+
+        socket.on("note:restored", handleNoteRestored)
+
+        return () => {
+            socket.off("note:restored", handleNoteRestored)
+        }
     }, [noteId])
 
 
@@ -368,7 +391,7 @@ const NoteEditorV2Page = () => {
         }
     }, [content, contentJson])
 
-    const handleSave = useCallback(async () => {
+    const handleSave = useCallback(async (saveType = "manual") => {
         if (!hasLoadedNote.current) return
 
         setIsSaving(true)
@@ -383,9 +406,13 @@ const NoteEditorV2Page = () => {
                 title,
                 content: currentPlainText,
                 contentJson: currentJson,
-                editorVersion: "v2"
+                editorVersion: "v2",
+                saveType
             })
             setSaveStatus("Saved")
+            if (saveType === "manual") {
+                setHistoryRefreshTrigger(Date.now())
+            }
         } catch {
             setError("Unable to save note.")
             setSaveStatus("Save failed")
@@ -398,7 +425,7 @@ const NoteEditorV2Page = () => {
         if (!hasLoadedNote.current || saveStatus !== "Unsaved changes") return undefined
 
         const saveTimer = setTimeout(() => {
-            handleSave()
+            handleSave("autosave")
         }, 1000)
 
         return () => clearTimeout(saveTimer)
@@ -484,6 +511,15 @@ const NoteEditorV2Page = () => {
                         <button
                             className="ghost-button collaboration-entry-button"
                             type="button"
+                            onClick={() => setIsHistoryOpen(true)}
+                        >
+                            <History size={15} />
+                            <span className="desktop-label">History</span>
+                        </button>
+                        
+                        <button
+                            className="ghost-button collaboration-entry-button"
+                            type="button"
                             onClick={() => setIsShareOpen(true)}
                         >
                             <IconUsers size={15} />
@@ -493,7 +529,7 @@ const NoteEditorV2Page = () => {
                         <button
                             className="primary-button save-button"
                             type="button"
-                            onClick={handleSave}
+                            onClick={() => handleSave("manual")}
                             disabled={isSaving}
                         >
                             <IconSave size={15} />
@@ -581,29 +617,39 @@ const NoteEditorV2Page = () => {
                         />
                     </section>
 
-                    <CommentsSidebar 
-                        noteId={noteId} 
-                        currentUser={user} 
-                        noteOwner={noteOwner}
-                        activeThreadId={activeThreadId}
-                        setActiveThreadId={(id) => {
-                            setActiveThreadId(id)
-                            if (id && editorRef.current) {
-                                editorRef.current.scrollToComment(id)
-                            }
-                        }}
-                        editorSelection={editorSelection}
-                        onCommentCreated={(anchorId) => {
-                            if (editorRef.current) {
-                                editorRef.current.setCommentMark(anchorId)
-                            }
-                        }}
-                        onCommentDeleted={(anchorId) => {
-                            if (editorRef.current) {
-                                editorRef.current.unsetCommentMark(anchorId)
-                            }
-                        }}
-                    />
+                    {!isHistoryOpen && (
+                        <CommentsSidebar 
+                            noteId={noteId} 
+                            currentUser={user} 
+                            noteOwner={noteOwner}
+                            activeThreadId={activeThreadId}
+                            setActiveThreadId={(id) => {
+                                setActiveThreadId(id)
+                                if (id && editorRef.current) {
+                                    editorRef.current.scrollToComment(id)
+                                }
+                            }}
+                            editorSelection={editorSelection}
+                            onCommentCreated={(anchorId) => {
+                                if (editorRef.current) {
+                                    editorRef.current.setCommentMark(anchorId)
+                                }
+                            }}
+                            onCommentDeleted={(anchorId) => {
+                                if (editorRef.current) {
+                                    editorRef.current.unsetCommentMark(anchorId)
+                                }
+                            }}
+                        />
+                    )}
+
+                    {isHistoryOpen && (
+                        <VersionHistoryPanel 
+                            noteId={noteId}
+                            refreshTrigger={historyRefreshTrigger} 
+                            onClose={() => setIsHistoryOpen(false)} 
+                        />
+                    )}
                 </div>
 
                 {isShareOpen && (

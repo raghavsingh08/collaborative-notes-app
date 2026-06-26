@@ -8,6 +8,7 @@ import DashboardPage from "./pages/DashboardPage"
 import NoteEditorPage from "./pages/NoteEditorPage"
 import SettingsPage from "./pages/SettingsPage"
 import NotFoundPage from "./pages/NotFoundPage"
+import NoteEditorV2Page from "./pages/NoteEditorV2Page"
 
 const App = () => {
     return (
@@ -22,6 +23,7 @@ const App = () => {
             <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/notes/:noteId" element={<NoteEditorPage />} />
+                <Route path="/notes/:noteId/v2" element={<NoteEditorV2Page />} />
                 <Route path="/settings" element={<SettingsPage />} />
             </Route>
 

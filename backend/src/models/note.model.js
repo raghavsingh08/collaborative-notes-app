@@ -12,6 +12,23 @@ const noteSchema = new mongoose.Schema(
             type: String,
             default: ""
         },
+        contentJson: {
+            type: Object,
+            default: null
+        },
+        editorVersion: {
+            type: String,
+            enum: ["v1", "v2"],
+            default: "v1"
+        },
+        yjsState: {
+            type: Buffer,
+            default: null
+        },
+        yjsStateUpdatedAt: {
+            type: Date,
+            default: null
+        },
         owner: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",

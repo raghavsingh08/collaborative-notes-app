@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@tiptap/extension-underline": "^3.27.1"
+  }
+}

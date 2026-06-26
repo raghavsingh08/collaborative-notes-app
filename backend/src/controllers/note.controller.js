@@ -68,7 +68,7 @@ const getNoteById = asyncHandler(async (req, res) => {
 
 const updateNote = asyncHandler(async (req, res) => {
     const { noteId } = req.params
-    const { title, content } = req.body
+    const { title, content, contentJson, editorVersion } = req.body
 
     if (!mongoose.isValidObjectId(noteId)) {
         throw new ApiError(400, "Invalid note id")
@@ -86,6 +86,14 @@ const updateNote = asyncHandler(async (req, res) => {
 
     if (content !== undefined) {
         updates.content = content
+    }
+
+    if (contentJson !== undefined) {
+        updates.contentJson = contentJson
+    }
+
+    if (editorVersion !== undefined) {
+        updates.editorVersion = editorVersion
     }
 
     if (Object.keys(updates).length === 0) {

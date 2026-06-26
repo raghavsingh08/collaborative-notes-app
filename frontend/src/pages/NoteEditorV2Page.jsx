@@ -19,7 +19,7 @@ import TipTapEditor from '../components/editor/TipTapEditor'
 import { CollaborationProvider, useCollaboration } from "../collaboration/CollaborationProvider"
 import CommentsSidebar from "../components/comments/CommentsSidebar"
 
-const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate }) => {
+const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onSelectionChange, onCommentClicked }) => {
     const { ydoc, awareness, syncStatus } = useCollaboration()
     
     // Key the editor by the unique Y.Doc GUID to force a complete React unmount/remount 
@@ -28,6 +28,7 @@ const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, on
     return (
         <TipTapEditor
             key={ydoc?.guid || 'editor'}
+            ref={editorRef}
             ydoc={ydoc}
             awareness={awareness}
             initialContent={initialContent}
@@ -35,6 +36,8 @@ const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, on
             hasLoaded={hasLoaded}
             onUpdate={onUpdate}
             syncStatus={syncStatus}
+            onSelectionChange={onSelectionChange}
+            onCommentClicked={onCommentClicked}
         />
     )
 }
@@ -267,6 +270,12 @@ const NoteEditorV2Page = () => {
     const [isShareOpen, setIsShareOpen] = useState(false)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
     const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false)
+    
+    // Step 17D Integration State
+    const [activeThreadId, setActiveThreadId] = useState(null)
+    const [editorSelection, setEditorSelection] = useState(null)
+    const editorRef = useRef(null)
+
     const hasLoadedNote = useRef(false)
     const editorMoreRef = useRef(null)
     const latestPayloadRef = useRef({ content: "", contentJson: null })
@@ -559,6 +568,9 @@ const NoteEditorV2Page = () => {
                             initialContent={content}
                             initialContentJson={contentJson}
                             hasLoaded={hasLoadedNote.current}
+                            editorRef={editorRef}
+                            onSelectionChange={setEditorSelection}
+                            onCommentClicked={(anchorId) => setActiveThreadId(anchorId)}
                             onUpdate={(payload) => {
                                 if (hasLoadedNote.current) {
                                     latestPayloadRef.current = payload
@@ -569,7 +581,29 @@ const NoteEditorV2Page = () => {
                         />
                     </section>
 
-                    <CommentsSidebar noteId={noteId} currentUser={user} />
+                    <CommentsSidebar 
+                        noteId={noteId} 
+                        currentUser={user} 
+                        noteOwner={noteOwner}
+                        activeThreadId={activeThreadId}
+                        setActiveThreadId={(id) => {
+                            setActiveThreadId(id)
+                            if (id && editorRef.current) {
+                                editorRef.current.scrollToComment(id)
+                            }
+                        }}
+                        editorSelection={editorSelection}
+                        onCommentCreated={(anchorId) => {
+                            if (editorRef.current) {
+                                editorRef.current.setCommentMark(anchorId)
+                            }
+                        }}
+                        onCommentDeleted={(anchorId) => {
+                            if (editorRef.current) {
+                                editorRef.current.unsetCommentMark(anchorId)
+                            }
+                        }}
+                    />
                 </div>
 
                 {isShareOpen && (

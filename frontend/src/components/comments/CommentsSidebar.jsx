@@ -1,19 +1,17 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { getComments, createComment, replyToComment, resolveComment, reopenComment } from '../../api/comments.api'
+import { getComments, createComment, replyToComment, resolveComment, reopenComment, deleteCommentThread, deleteCommentReply } from '../../api/comments.api'
 import CommentSummaryCard from './CommentSummaryCard'
 import CommentDiscussionView from './CommentDiscussionView'
 import { Plus, MessageSquare, X } from 'lucide-react'
 import socket from '../../api/socket'
 
-const CommentsSidebar = ({ noteId, currentUser: _currentUser }) => {
+const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted }) => {
     const [threads, setThreads] = useState([])
-    const [activeThreadId, setActiveThreadId] = useState(null)
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
     
     // Modal state for adding a temporary comment manually
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-    const [newSelectedText, setNewSelectedText] = useState('')
     const [newCommentText, setNewCommentText] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const commentsListRef = useRef(null)
@@ -76,20 +74,26 @@ const CommentsSidebar = ({ noteId, currentUser: _currentUser }) => {
         }
     }, [noteId, fetchComments])
 
+    const normalizedSelection = editorSelection?.selectedText ? editorSelection.selectedText.trim() : "";
+
     const handleCreateComment = async (e) => {
         e.preventDefault()
-        if (!newSelectedText.trim() || !newCommentText.trim() || isSubmitting) return
+        if (normalizedSelection.length < 2 || !newCommentText.trim() || newCommentText.length > 1000 || isSubmitting) return
 
         try {
             setIsSubmitting(true)
+            const anchorId = `anchor-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
             await createComment(noteId, {
                 body: newCommentText,
-                selectedText: newSelectedText,
-                anchorId: `manual-${Date.now()}`
+                selectedText: normalizedSelection,
+                anchorId: anchorId
             })
             setIsAddModalOpen(false)
-            setNewSelectedText('')
             setNewCommentText('')
+            if (onCommentCreated) {
+                onCommentCreated(anchorId)
+            }
+            await fetchComments(true)
         } catch (err) {
             console.error('Failed to create comment:', err)
             alert('Failed to create comment')
@@ -119,9 +123,37 @@ const CommentsSidebar = ({ noteId, currentUser: _currentUser }) => {
     const handleReopen = async (threadId) => {
         try {
             await reopenComment(threadId)
+            await fetchComments(true)
         } catch (err) {
             console.error('Failed to reopen:', err)
             alert('Failed to reopen thread')
+        }
+    }
+
+    const handleDeleteThread = async (threadId) => {
+        if (!window.confirm("Are you sure you want to delete this entire thread?")) return
+        try {
+            const thread = safeThreads.find(t => t._id === threadId)
+            await deleteCommentThread(threadId)
+            if (thread && thread.anchorId && onCommentDeleted) {
+                onCommentDeleted(thread.anchorId)
+            }
+            setActiveThreadId(null)
+            await fetchComments(true)
+        } catch (err) {
+            console.error('Failed to delete thread:', err)
+            alert('Failed to delete thread')
+        }
+    }
+
+    const handleDeleteReply = async (threadId, replyId) => {
+        if (!window.confirm("Are you sure you want to delete this reply?")) return
+        try {
+            await deleteCommentReply(threadId, replyId)
+            await fetchComments(true)
+        } catch (err) {
+            console.error('Failed to delete reply:', err)
+            alert('Failed to delete reply')
         }
     }
 
@@ -130,6 +162,20 @@ const CommentsSidebar = ({ noteId, currentUser: _currentUser }) => {
     const resolvedThreads = safeThreads.filter(t => t.status === 'resolved')
     
     const activeThread = activeThreadId ? safeThreads.find(t => t._id === activeThreadId) : null
+
+    useEffect(() => {
+        const currentThreads = Array.isArray(threads) ? threads : []
+
+        if (activeThreadId && !currentThreads.some(thread => thread._id === activeThreadId)) {
+            setActiveThreadId(null)
+        }
+    }, [activeThreadId, threads, setActiveThreadId])
+
+    const isSelectionValid = normalizedSelection.length >= 2 && normalizedSelection.length <= 300;
+    const canAddComment = editorSelection && isSelectionValid && !editorSelection.hasExistingComment;
+    const commentWarning = editorSelection?.hasExistingComment 
+        ? "This text already has a comment." 
+        : (normalizedSelection.length > 300 ? "Please select a shorter text (maximum 300 characters)." : (normalizedSelection.length < 2 ? "Please select at least 2 non-whitespace characters." : ""));
 
     return (
         <aside className="collaboration-panel comments-sidebar" aria-label="Comments" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -142,14 +188,23 @@ const CommentsSidebar = ({ noteId, currentUser: _currentUser }) => {
                     </h2>
                 </div>
                 {!activeThreadId && (
-                    <button 
-                        className="icon-button" 
-                        onClick={() => setIsAddModalOpen(true)}
-                        aria-label="New comment"
-                        title="New comment"
-                    >
-                        <Plus size={18} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {commentWarning && (
+                            <span style={{ fontSize: '11px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                                {commentWarning}
+                            </span>
+                        )}
+                        <button 
+                            className="icon-button" 
+                            onClick={() => setIsAddModalOpen(true)}
+                            disabled={!canAddComment}
+                            style={{ opacity: canAddComment ? 1 : 0.5, cursor: canAddComment ? 'pointer' : 'not-allowed' }}
+                            aria-label="New comment"
+                            title={commentWarning || "New comment"}
+                        >
+                            <Plus size={18} />
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -165,6 +220,10 @@ const CommentsSidebar = ({ noteId, currentUser: _currentUser }) => {
                             onReply={handleReply}
                             onResolve={handleResolve}
                             onReopen={handleReopen}
+                            onDeleteThread={handleDeleteThread}
+                            onDeleteReply={handleDeleteReply}
+                            currentUser={currentUser}
+                            noteOwner={noteOwner}
                         />
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -214,18 +273,27 @@ const CommentsSidebar = ({ noteId, currentUser: _currentUser }) => {
                         </div>
                         <form onSubmit={handleCreateComment}>
                             <div style={{ marginBottom: '16px' }}>
-                                <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', fontWeight: 600 }}>Selected Text (Manual Input for now)</label>
-                                <input
-                                    type="text"
-                                    value={newSelectedText}
-                                    onChange={e => setNewSelectedText(e.target.value)}
-                                    placeholder="e.g. This is a great point"
-                                    required
-                                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
-                                />
+                                <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', fontWeight: 600 }}>Selected Text</label>
+                                <div style={{ 
+                                    padding: '8px 12px', 
+                                    borderRadius: '6px', 
+                                    backgroundColor: 'rgba(0,0,0,0.2)', 
+                                    borderLeft: '2px solid var(--accent)',
+                                    color: 'var(--muted)',
+                                    fontSize: '13px',
+                                    fontStyle: 'italic',
+                                    wordBreak: 'break-word'
+                                }}>
+                                    "{normalizedSelection}"
+                                </div>
                             </div>
                             <div style={{ marginBottom: '16px' }}>
-                                <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', fontWeight: 600 }}>Comment</label>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <label style={{ fontSize: '12px', fontWeight: 600 }}>Comment</label>
+                                    <span style={{ fontSize: '11px', color: newCommentText.length > 1000 ? 'var(--danger, #ef4444)' : 'var(--muted)' }}>
+                                        {newCommentText.length} / 1000
+                                    </span>
+                                </div>
                                 <textarea
                                     value={newCommentText}
                                     onChange={e => setNewCommentText(e.target.value)}
@@ -237,7 +305,7 @@ const CommentsSidebar = ({ noteId, currentUser: _currentUser }) => {
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                                 <button type="button" className="ghost-button" onClick={() => setIsAddModalOpen(false)}>Cancel</button>
-                                <button type="submit" className="primary-button" disabled={isSubmitting}>
+                                <button type="submit" className="primary-button" disabled={isSubmitting || newCommentText.length > 1000 || !newCommentText.trim()}>
                                     {isSubmitting ? 'Posting...' : 'Post Comment'}
                                 </button>
                             </div>

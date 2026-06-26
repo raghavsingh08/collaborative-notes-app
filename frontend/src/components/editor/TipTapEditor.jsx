@@ -4,8 +4,9 @@ import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import EditorToolbar from './EditorToolbar';
+import { CommentMark } from './extensions/CommentMark';
 
-const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate, hasLoaded, ydoc, awareness, syncStatus }, ref) => {
+const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate, hasLoaded, ydoc, awareness, syncStatus, onSelectionChange, onCommentClicked }, ref) => {
     const hasInitializedYdoc = useRef(false);
 
     const editor = useEditor({
@@ -18,6 +19,11 @@ const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate,
             }),
             CollaborationCaret.configure({
                 provider: { awareness }
+            }),
+            CommentMark.configure({
+                onCommentClicked: (anchorId) => {
+                    if (onCommentClicked) onCommentClicked(anchorId)
+                }
             })
         ],
         onUpdate: ({ editor }) => {
@@ -26,6 +32,19 @@ const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate,
                     content: editor.getText(),
                     contentJson: editor.getJSON(),
                 });
+            }
+        },
+        onSelectionUpdate: ({ editor }) => {
+            if (onSelectionChange) {
+                const { state } = editor
+                const { from, to, empty } = state.selection
+                if (empty) {
+                    onSelectionChange(null)
+                    return
+                }
+                const selectedText = state.doc.textBetween(from, to, ' ')
+                const hasExistingComment = editor.isActive('commentMark')
+                onSelectionChange({ selectedText, from, to, hasExistingComment })
             }
         },
         editorProps: {
@@ -40,6 +59,38 @@ const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate,
         getText: () => editor ? editor.getText() : initialContent,
         getJSON: () => editor ? editor.getJSON() : initialContentJson,
         getEditor: () => editor,
+        setCommentMark: (anchorId) => {
+            if (editor) editor.commands.setCommentMark(anchorId)
+        },
+        unsetCommentMark: (anchorId) => {
+            if (editor) editor.commands.unsetCommentMark(anchorId)
+        },
+        scrollToComment: (anchorId) => {
+            if (!editor) return
+            const view = editor.view
+            let pos = null
+            view.state.doc.descendants((node, p) => {
+                if (node.isText && node.marks) {
+                    const mark = node.marks.find(m => m.type.name === 'commentMark' && m.attrs.anchorId === anchorId)
+                    if (mark && pos === null) {
+                        pos = p
+                    }
+                }
+            })
+            if (pos !== null) {
+                // Flash the highlight briefly if possible, then scroll to it
+                const dom = view.nodeDOM(pos)
+                if (dom && dom.scrollIntoView) {
+                    dom.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    // Optional: Brief highlight flash using native dom
+                    if (dom.style) {
+                        const original = dom.style.backgroundColor
+                        dom.style.backgroundColor = 'rgba(250, 204, 21, 0.6)'
+                        setTimeout(() => dom.style.backgroundColor = original, 1000)
+                    }
+                }
+            }
+        }
     }));
 
     useEffect(() => {

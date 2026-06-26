@@ -33,20 +33,25 @@ const normalizeText = (value) => {
     return typeof value === "string" ? value.trim() : ""
 }
 
-const notifyCommentUpdated = ({ noteId, threadId, action, updatedBy }) => {
+const notifyCommentUpdated = ({ noteId, threadId, replyId, action, updatedBy }) => {
     emitCommentUpdate({
         noteId,
         threadId,
+        replyId,
         action,
         updatedBy
     })
 }
 
-const requireBody = (body) => {
+const requireBody = (body, limit = 1000, type = "Comment") => {
     const normalizedBody = normalizeText(body)
 
     if (!normalizedBody) {
-        throw new ApiError(400, "Comment body is required")
+        throw new ApiError(400, `${type} cannot be empty`)
+    }
+    
+    if (normalizedBody.length > limit) {
+        throw new ApiError(400, `${type}s are limited to ${limit} characters.`)
     }
 
     return normalizedBody
@@ -70,6 +75,46 @@ const findAccessibleThread = async (threadId, userId) => {
     }
 
     return thread
+}
+
+const findAccessibleThreadContext = async (threadId, userId) => {
+    if (!mongoose.isValidObjectId(threadId)) {
+        throw new ApiError(400, "Invalid thread id")
+    }
+
+    const thread = await CommentThread.findById(threadId)
+
+    if (!thread) {
+        throw new ApiError(404, "Comment thread not found")
+    }
+
+    const note = await getAccessibleNote(thread.noteId, userId)
+
+    if (!note) {
+        throw new ApiError(403, "You do not have access to this note")
+    }
+
+    return { note, thread }
+}
+
+const isSameId = (a, b) => {
+    return Boolean(a && b && String(a) === String(b))
+}
+
+const getRootComment = (thread) => {
+    return Array.isArray(thread.comments) && thread.comments.length > 0
+        ? thread.comments[0]
+        : null
+}
+
+const canDeleteThread = (note, thread, userId) => {
+    const rootComment = getRootComment(thread)
+
+    return isSameId(note.owner, userId) || isSameId(rootComment?.createdBy, userId)
+}
+
+const canDeleteReply = (note, reply, userId) => {
+    return isSameId(note.owner, userId) || isSameId(reply?.createdBy, userId)
 }
 
 const getNoteCommentThreads = asyncHandler(async (req, res) => {
@@ -107,7 +152,15 @@ const createCommentThread = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Anchor id is required")
     }
 
-    const normalizedBody = requireBody(body)
+    const normalizedSelectedText = normalizeText(selectedText)
+    if (normalizedSelectedText.length < 2) {
+        throw new ApiError(400, "Please select at least 2 non-whitespace characters.")
+    }
+    if (normalizedSelectedText.length > 300) {
+        throw new ApiError(400, "Please select a shorter text (maximum 300 characters).")
+    }
+
+    const normalizedBody = requireBody(body, 1000, "Comment")
 
     const thread = await CommentThread.create({
         noteId,
@@ -143,7 +196,7 @@ const addCommentReply = asyncHandler(async (req, res) => {
     const { body } = req.body
 
     const thread = await findAccessibleThread(threadId, req.user._id)
-    const normalizedBody = requireBody(body)
+    const normalizedBody = requireBody(body, 1000, "Reply")
 
     thread.comments.push({
         body: normalizedBody,
@@ -222,9 +275,82 @@ const reopenCommentThread = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, populatedThread, "Comment thread reopened successfully"))
 })
 
+const deleteCommentThread = asyncHandler(async (req, res) => {
+    const { threadId } = req.params
+
+    const { note, thread } = await findAccessibleThreadContext(threadId, req.user._id)
+
+    if (!canDeleteThread(note, thread, req.user._id)) {
+        throw new ApiError(403, "You do not have permission to delete this thread")
+    }
+
+    const noteId = thread.noteId
+
+    await CommentThread.deleteOne({ _id: thread._id })
+
+    notifyCommentUpdated({
+        noteId,
+        threadId: thread._id,
+        action: "thread_deleted",
+        updatedBy: req.user._id
+    })
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, null, "Comment thread deleted successfully"))
+})
+
+const deleteCommentReply = asyncHandler(async (req, res) => {
+    const { threadId, replyId } = req.params
+
+    if (!mongoose.isValidObjectId(replyId)) {
+        throw new ApiError(400, "Invalid reply id")
+    }
+
+    const { note, thread } = await findAccessibleThreadContext(threadId, req.user._id)
+    const reply = thread.comments.id(replyId)
+
+    if (!reply) {
+        throw new ApiError(404, "Reply not found")
+    }
+
+    const rootComment = getRootComment(thread)
+
+    if (isSameId(rootComment?._id, replyId)) {
+        throw new ApiError(400, "Delete the entire thread to remove the root comment")
+    }
+
+    if (!canDeleteReply(note, reply, req.user._id)) {
+        throw new ApiError(403, "You do not have permission to delete this reply")
+    }
+
+    const noteId = thread.noteId
+
+    thread.comments.pull(replyId)
+    await thread.save()
+
+    notifyCommentUpdated({
+        noteId,
+        threadId: thread._id,
+        replyId,
+        action: "reply_deleted",
+        updatedBy: req.user._id
+    })
+
+    const populatedThread = await populateThreadUsers(
+        CommentThread.findById(thread._id)
+    )
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, populatedThread, "Reply deleted successfully"))
+})
+
 export {
     addCommentReply,
     createCommentThread,
+    deleteCommentReply,
+    deleteCommentThread,
     getNoteCommentThreads,
     reopenCommentThread,
     resolveCommentThread

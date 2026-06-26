@@ -17,6 +17,7 @@ import useNoteSocketV2 from "../hooks/useNoteSocketV2"
 import usePageTitle from "../hooks/usePageTitle"
 import TipTapEditor from '../components/editor/TipTapEditor'
 import { CollaborationProvider, useCollaboration } from "../collaboration/CollaborationProvider"
+import CommentsSidebar from "../components/comments/CommentsSidebar"
 
 const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate }) => {
     const { ydoc, awareness, syncStatus } = useCollaboration()
@@ -568,17 +569,7 @@ const NoteEditorV2Page = () => {
                         />
                     </section>
 
-                    <aside className="collaboration-panel" aria-label="Active collaborators">
-                        <div>
-                            <p className="eyebrow">Live session</p>
-                            <h2>Collaborators</h2>
-                        </div>
-
-                        {/* Legacy V1 list cleared; fully replaced by ActiveCollaboratorsStack in V2 toolbar */}
-                        <div className="legacy-sidebar-notice" style={{ marginTop: '1rem', color: 'var(--muted)' }}>
-                            <p>Active collaborators are now visible in the top toolbar.</p>
-                        </div>
-                    </aside>
+                    <CommentsSidebar noteId={noteId} currentUser={user} />
                 </div>
 
                 {isShareOpen && (

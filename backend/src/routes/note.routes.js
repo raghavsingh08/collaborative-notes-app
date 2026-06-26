@@ -9,6 +9,7 @@ import {
     unshareNote,
     updateNote
 } from "../controllers/note.controller.js"
+import { getNoteActivity } from "../controllers/activity.controller.js"
 import { verifyJWT } from "../middleware/auth.middleware.js"
 
 const router = Router()
@@ -27,6 +28,9 @@ router.route("/:noteId/share/:userId")
 
 router.route("/:noteId/shared-users")
     .get(getSharedUsers)
+
+router.route("/:noteId/activity")
+    .get(getNoteActivity)
 
 router.route("/:noteId")
     .get(getNoteById)

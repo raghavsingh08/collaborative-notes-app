@@ -1,6 +1,7 @@
 import mongoose from "mongoose"
 import Note from "../models/note.model.js"
 import User from "../models/user.model.js"
+import { logActivity } from "../utils/activityLogger.js"
 import { createNoteVersionSnapshot } from "../utils/noteVersionSnapshots.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
@@ -14,6 +15,19 @@ const getAccessibleNoteQuery = (noteId, userId) => ({
     ]
 })
 
+const getDisplayName = (user) => {
+    return user?.name || user?.username || user?.email || ""
+}
+
+const recordActivity = ({ noteId, actor, type, metadata = {} }) => {
+    return logActivity({
+        noteId,
+        actor,
+        type,
+        metadata
+    })
+}
+
 const createNote = asyncHandler(async (req, res) => {
     const { title, content } = req.body
 
@@ -25,6 +39,15 @@ const createNote = asyncHandler(async (req, res) => {
         title: title.trim(),
         content: content || "",
         owner: req.user._id
+    })
+
+    await recordActivity({
+        noteId: note._id,
+        actor: req.user,
+        type: "NOTE_CREATED",
+        metadata: {
+            title: note.title
+        }
     })
 
     return res
@@ -101,6 +124,10 @@ const updateNote = asyncHandler(async (req, res) => {
         throw new ApiError(400, "No update fields provided")
     }
 
+    const previousNote = title !== undefined
+        ? await Note.findOne(getAccessibleNoteQuery(noteId, req.user._id)).select("title")
+        : null
+
     const note = await Note.findOneAndUpdate(
         getAccessibleNoteQuery(noteId, req.user._id),
         {
@@ -116,11 +143,33 @@ const updateNote = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Note not found")
     }
 
+    if (previousNote && title !== undefined && previousNote.title !== note.title) {
+        await recordActivity({
+            noteId: note._id,
+            actor: req.user,
+            type: "NOTE_RENAMED",
+            metadata: {
+                oldTitle: previousNote.title,
+                newTitle: note.title
+            }
+        })
+    }
+
     if (saveType === "manual") {
-        await createNoteVersionSnapshot({
+        const snapshot = await createNoteVersionSnapshot({
             note,
             createdBy: req.user._id,
             reason: "manual_save"
+        })
+
+        await recordActivity({
+            noteId: note._id,
+            actor: req.user,
+            type: "MANUAL_SAVE",
+            metadata: {
+                versionId: snapshot.version?._id,
+                versionCreated: snapshot.created
+            }
         })
     }
 
@@ -197,6 +246,16 @@ const shareNote = asyncHandler(async (req, res) => {
     note.sharedWith.push(userToShareWith._id)
     await note.save()
 
+    await recordActivity({
+        noteId: note._id,
+        actor: req.user,
+        type: "COLLABORATOR_ADDED",
+        metadata: {
+            collaboratorId: userToShareWith._id,
+            collaboratorName: getDisplayName(userToShareWith)
+        }
+    })
+
     return res
         .status(200)
         .json(new ApiResponse(200, note, "Note shared successfully"))
@@ -222,6 +281,8 @@ const unshareNote = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Note not found")
     }
 
+    const userToRemove = await User.findById(userId).select("username email name")
+
     const wasShared = note.sharedWith.some((sharedUserId) =>
         sharedUserId.equals(userId)
     )
@@ -234,6 +295,16 @@ const unshareNote = asyncHandler(async (req, res) => {
         (sharedUserId) => !sharedUserId.equals(userId)
     )
     await note.save()
+
+    await recordActivity({
+        noteId: note._id,
+        actor: req.user,
+        type: "COLLABORATOR_REMOVED",
+        metadata: {
+            collaboratorId: userId,
+            collaboratorName: getDisplayName(userToRemove)
+        }
+    })
 
     return res
         .status(200)

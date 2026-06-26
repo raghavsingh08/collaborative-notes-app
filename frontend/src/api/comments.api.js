@@ -34,3 +34,8 @@ export const deleteCommentReply = async (threadId, replyId) => {
     const res = await api.delete(`/comments/${threadId}/replies/${replyId}`)
     return res.data
 }
+
+export const markCommentThreadAsRead = async (threadId) => {
+    const res = await api.post(`/comments/${threadId}/read`)
+    return res.data
+}

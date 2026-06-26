@@ -5,6 +5,7 @@ import {
     deleteCommentReply,
     deleteCommentThread,
     getNoteCommentThreads,
+    markCommentThreadAsRead,
     reopenCommentThread,
     resolveCommentThread
 } from "../controllers/comment.controller.js"
@@ -23,6 +24,10 @@ router.route("/comments/:threadId/replies")
 
 router.route("/comments/:threadId")
     .delete(deleteCommentThread)
+
+router.route("/comments/:threadId/read")
+    .post(markCommentThreadAsRead)
+    .patch(markCommentThreadAsRead)
 
 router.route("/comments/:threadId/replies/:replyId")
     .delete(deleteCommentReply)

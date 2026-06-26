@@ -2,6 +2,7 @@ import mongoose from "mongoose"
 import Note from "../models/note.model.js"
 import NoteVersion from "../models/noteVersion.model.js"
 import { emitNoteRestored } from "../sockets/socketState.js"
+import { logActivity } from "../utils/activityLogger.js"
 import { releaseAuthoritativeYDoc } from "../utils/yjsNoteState.js"
 import {
     createNoteVersionSnapshot,
@@ -61,6 +62,15 @@ const makePreview = (content = "") => {
     }
 
     return `${normalized.slice(0, 117)}...`
+}
+
+const recordActivity = ({ noteId, actor, type, metadata = {} }) => {
+    return logActivity({
+        noteId,
+        actor,
+        type,
+        metadata
+    })
 }
 
 const getNoteVersions = asyncHandler(async (req, res) => {
@@ -127,6 +137,15 @@ const restoreNoteVersion = asyncHandler(async (req, res) => {
         noteId: note._id,
         versionId: version._id,
         restoredBy: req.user._id
+    })
+
+    await recordActivity({
+        noteId: note._id,
+        actor: req.user,
+        type: "VERSION_RESTORED",
+        metadata: {
+            versionId: version._id
+        }
     })
 
     return res

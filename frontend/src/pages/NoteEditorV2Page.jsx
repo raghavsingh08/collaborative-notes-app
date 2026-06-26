@@ -20,7 +20,8 @@ import TipTapEditor from '../components/editor/TipTapEditor'
 import { CollaborationProvider, useCollaboration } from "../collaboration/CollaborationProvider"
 import CommentsSidebar from "../components/comments/CommentsSidebar"
 import VersionHistoryPanel from "../components/versions/VersionHistoryPanel"
-import { History } from "lucide-react"
+import ActivitySidebar from "../components/activity/ActivitySidebar"
+import { History, Activity } from "lucide-react"
 
 const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onSelectionChange, onCommentClicked }) => {
     const { ydoc, awareness, syncStatus } = useCollaboration()
@@ -283,6 +284,10 @@ const NoteEditorV2Page = () => {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false)
     const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0)
 
+    // Activity Integration State
+    const [isActivityOpen, setIsActivityOpen] = useState(false)
+    const [activityRefreshTrigger, setActivityRefreshTrigger] = useState(0)
+
     const hasLoadedNote = useRef(false)
     const editorMoreRef = useRef(null)
     const latestPayloadRef = useRef({ content: "", contentJson: null })
@@ -412,6 +417,7 @@ const NoteEditorV2Page = () => {
             setSaveStatus("Saved")
             if (saveType === "manual") {
                 setHistoryRefreshTrigger(Date.now())
+                setActivityRefreshTrigger(Date.now())
             }
         } catch {
             setError("Unable to save note.")
@@ -511,10 +517,25 @@ const NoteEditorV2Page = () => {
                         <button
                             className="ghost-button collaboration-entry-button"
                             type="button"
-                            onClick={() => setIsHistoryOpen(true)}
+                            onClick={() => {
+                                setIsHistoryOpen(true)
+                                setIsActivityOpen(false)
+                            }}
                         >
                             <History size={15} />
                             <span className="desktop-label">History</span>
+                        </button>
+
+                        <button
+                            className="ghost-button collaboration-entry-button"
+                            type="button"
+                            onClick={() => {
+                                setIsActivityOpen(true)
+                                setIsHistoryOpen(false)
+                            }}
+                        >
+                            <Activity size={15} />
+                            <span className="desktop-label">Activity</span>
                         </button>
                         
                         <button
@@ -594,6 +615,7 @@ const NoteEditorV2Page = () => {
                             type="text"
                             value={title}
                             onChange={handleTitleChange}
+                            onBlur={() => setActivityRefreshTrigger(Date.now())}
                             placeholder="Untitled"
                             aria-label="Note title"
                         />
@@ -617,7 +639,7 @@ const NoteEditorV2Page = () => {
                         />
                     </section>
 
-                    {!isHistoryOpen && (
+                    {!isHistoryOpen && !isActivityOpen && (
                         <CommentsSidebar 
                             noteId={noteId} 
                             currentUser={user} 
@@ -650,6 +672,15 @@ const NoteEditorV2Page = () => {
                             onClose={() => setIsHistoryOpen(false)} 
                         />
                     )}
+
+                    {isActivityOpen && (
+                        <ActivitySidebar 
+                            noteId={noteId}
+                            currentUser={user}
+                            refreshTrigger={activityRefreshTrigger}
+                            onClose={() => setIsActivityOpen(false)}
+                        />
+                    )}
                 </div>
 
                 {isShareOpen && (
@@ -660,7 +691,10 @@ const NoteEditorV2Page = () => {
                         fallbackCollaborators={uniqueCollaborators}
                         activeUsers={sortedActiveUsers}
                         typingUsers={uniqueTypingUsers}
-                        onClose={() => setIsShareOpen(false)}
+                        onClose={() => {
+                            setIsShareOpen(false)
+                            setActivityRefreshTrigger(Date.now())
+                        }}
                     />
                 )}
 

@@ -44,7 +44,10 @@ const CommentSummaryCard = ({ thread, onClick }) => {
             onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--surface-color)' }}
         >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-color)' }}>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {thread.isUnread && (
+                        <span style={{ width: '6px', height: '6px', backgroundColor: 'var(--danger, #ef4444)', borderRadius: '50%' }} aria-label="Unread" />
+                    )}
                     {resolveAuthorName(mainComment || thread)}
                 </span>
                 <span style={{ fontSize: '11px', color: 'var(--muted)' }}>

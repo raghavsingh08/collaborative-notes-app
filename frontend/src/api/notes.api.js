@@ -44,6 +44,10 @@ const restoreNoteVersion = (noteId, versionId) => {
     return api.post(`/notes/${noteId}/versions/${versionId}/restore`)
 }
 
+const getNoteActivity = (noteId) => {
+    return api.get(`/notes/${noteId}/activity`)
+}
+
 export {
     getNotes,
     createNote,
@@ -55,5 +59,6 @@ export {
     getSharedUsers,
     getNoteVersions,
     getNoteVersionById,
-    restoreNoteVersion
+    restoreNoteVersion,
+    getNoteActivity
 }

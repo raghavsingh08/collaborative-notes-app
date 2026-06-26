@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { getComments, createComment, replyToComment, resolveComment, reopenComment, deleteCommentThread, deleteCommentReply } from '../../api/comments.api'
+import { getComments, createComment, replyToComment, resolveComment, reopenComment, deleteCommentThread, deleteCommentReply, markCommentThreadAsRead } from '../../api/comments.api'
 import CommentSummaryCard from './CommentSummaryCard'
 import CommentDiscussionView from './CommentDiscussionView'
 import { Plus, MessageSquare, X } from 'lucide-react'
@@ -99,6 +99,23 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
             alert('Failed to create comment')
         } finally {
             setIsSubmitting(false)
+        }
+    }
+
+    const handleThreadClick = async (threadId) => {
+        setActiveThreadId(threadId)
+        
+        const thread = threads.find(t => t._id === threadId)
+        if (thread && thread.isUnread) {
+            try {
+                await markCommentThreadAsRead(threadId)
+                // Update local state only after successful response
+                setThreads(prev => prev.map(t => 
+                    t._id === threadId ? { ...t, isUnread: false } : t
+                ))
+            } catch (err) {
+                console.error('Failed to mark thread as read:', err)
+            }
         }
     }
 
@@ -238,7 +255,7 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                                 <CommentSummaryCard
                                     key={thread._id}
                                     thread={thread}
-                                    onClick={() => setActiveThreadId(thread._id)}
+                                    onClick={() => handleThreadClick(thread._id)}
                                 />
                             ))}
 
@@ -251,7 +268,7 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                                         <CommentSummaryCard
                                             key={thread._id}
                                             thread={thread}
-                                            onClick={() => setActiveThreadId(thread._id)}
+                                            onClick={() => handleThreadClick(thread._id)}
                                         />
                                     ))}
                                 </div>

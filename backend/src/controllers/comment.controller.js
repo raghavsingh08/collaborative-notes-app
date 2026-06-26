@@ -2,6 +2,11 @@ import mongoose from "mongoose"
 import CommentThread from "../models/commentThread.model.js"
 import Note from "../models/note.model.js"
 import { emitCommentUpdate } from "../sockets/socketState.js"
+import { logActivity } from "../utils/activityLogger.js"
+import {
+    getThreadReadState,
+    markThreadAsRead
+} from "../utils/commentReadState.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
@@ -40,6 +45,15 @@ const notifyCommentUpdated = ({ noteId, threadId, replyId, action, updatedBy }) 
         replyId,
         action,
         updatedBy
+    })
+}
+
+const recordActivity = ({ noteId, actor, type, metadata = {} }) => {
+    return logActivity({
+        noteId,
+        actor,
+        type,
+        metadata
     })
 }
 
@@ -97,8 +111,16 @@ const findAccessibleThreadContext = async (threadId, userId) => {
     return { note, thread }
 }
 
+const toIdString = (value) => {
+    if (!value) {
+        return ""
+    }
+
+    return String(value._id || value)
+}
+
 const isSameId = (a, b) => {
-    return Boolean(a && b && String(a) === String(b))
+    return Boolean(a && b && toIdString(a) === toIdString(b))
 }
 
 const getRootComment = (thread) => {
@@ -117,6 +139,60 @@ const canDeleteReply = (note, reply, userId) => {
     return isSameId(note.owner, userId) || isSameId(reply?.createdBy, userId)
 }
 
+const getThreadLatestActivity = (thread) => {
+    let latestActivityAt = thread.createdAt || new Date(0)
+    let latestActivityBy = thread.createdBy
+
+    thread.comments.forEach((comment) => {
+        if (comment.createdAt && comment.createdAt > latestActivityAt) {
+            latestActivityAt = comment.createdAt
+            latestActivityBy = comment.createdBy
+        }
+    })
+
+    return {
+        latestActivityAt,
+        latestActivityBy
+    }
+}
+
+const shouldMarkThreadUnread = ({ thread, readState, userId }) => {
+    const { latestActivityAt, latestActivityBy } = getThreadLatestActivity(thread)
+
+    if (isSameId(latestActivityBy, userId)) {
+        return false
+    }
+
+    if (!readState) {
+        return true
+    }
+
+    return latestActivityAt > readState.lastReadAt
+}
+
+const addUnreadStateToThreads = async (threads, userId) => {
+    const threadIds = threads.map((thread) => thread._id)
+    const readStates = await getThreadReadState(userId, threadIds)
+    const readStateByThreadId = new Map(
+        readStates.map((readState) => [
+            String(readState.threadId),
+            readState
+        ])
+    )
+
+    return threads.map((thread) => {
+        const threadObject = thread.toObject()
+
+        threadObject.isUnread = shouldMarkThreadUnread({
+            thread,
+            readState: readStateByThreadId.get(String(thread._id)),
+            userId
+        })
+
+        return threadObject
+    })
+}
+
 const getNoteCommentThreads = asyncHandler(async (req, res) => {
     const { noteId } = req.params
 
@@ -130,10 +206,29 @@ const getNoteCommentThreads = asyncHandler(async (req, res) => {
         CommentThread.find({ noteId })
             .sort({ status: 1, updatedAt: -1 })
     )
+    const threadsWithUnreadState = await addUnreadStateToThreads(threads, req.user._id)
 
     return res
         .status(200)
-        .json(new ApiResponse(200, threads, "Comment threads fetched successfully"))
+        .json(new ApiResponse(200, threadsWithUnreadState, "Comment threads fetched successfully"))
+})
+
+const markCommentThreadAsRead = asyncHandler(async (req, res) => {
+    const { threadId } = req.params
+
+    const thread = await findAccessibleThread(threadId, req.user._id)
+    const readState = await markThreadAsRead(req.user._id, thread._id)
+
+    return res
+        .status(200)
+        .json(new ApiResponse(
+            200,
+            {
+                threadId: thread._id,
+                lastReadAt: readState.lastReadAt
+            },
+            "Comment thread marked as read"
+        ))
 })
 
 const createCommentThread = asyncHandler(async (req, res) => {
@@ -186,6 +281,17 @@ const createCommentThread = asyncHandler(async (req, res) => {
         updatedBy: req.user._id
     })
 
+    await recordActivity({
+        noteId,
+        actor: req.user,
+        type: "COMMENT_CREATED",
+        metadata: {
+            threadId: thread._id,
+            anchorId: thread.anchorId,
+            selectedText: thread.selectedText
+        }
+    })
+
     return res
         .status(201)
         .json(new ApiResponse(201, populatedThread, "Comment thread created successfully"))
@@ -204,6 +310,7 @@ const addCommentReply = asyncHandler(async (req, res) => {
     })
 
     await thread.save()
+    const reply = thread.comments[thread.comments.length - 1]
 
     const populatedThread = await populateThreadUsers(
         CommentThread.findById(thread._id)
@@ -214,6 +321,16 @@ const addCommentReply = asyncHandler(async (req, res) => {
         threadId: thread._id,
         action: "replied",
         updatedBy: req.user._id
+    })
+
+    await recordActivity({
+        noteId: thread.noteId,
+        actor: req.user,
+        type: "REPLY_CREATED",
+        metadata: {
+            threadId: thread._id,
+            replyId: reply?._id
+        }
     })
 
     return res
@@ -243,6 +360,15 @@ const resolveCommentThread = asyncHandler(async (req, res) => {
         updatedBy: req.user._id
     })
 
+    await recordActivity({
+        noteId: thread.noteId,
+        actor: req.user,
+        type: "COMMENT_RESOLVED",
+        metadata: {
+            threadId: thread._id
+        }
+    })
+
     return res
         .status(200)
         .json(new ApiResponse(200, populatedThread, "Comment thread resolved successfully"))
@@ -270,6 +396,15 @@ const reopenCommentThread = asyncHandler(async (req, res) => {
         updatedBy: req.user._id
     })
 
+    await recordActivity({
+        noteId: thread.noteId,
+        actor: req.user,
+        type: "COMMENT_REOPENED",
+        metadata: {
+            threadId: thread._id
+        }
+    })
+
     return res
         .status(200)
         .json(new ApiResponse(200, populatedThread, "Comment thread reopened successfully"))
@@ -293,6 +428,15 @@ const deleteCommentThread = asyncHandler(async (req, res) => {
         threadId: thread._id,
         action: "thread_deleted",
         updatedBy: req.user._id
+    })
+
+    await recordActivity({
+        noteId,
+        actor: req.user,
+        type: "COMMENT_DELETED",
+        metadata: {
+            threadId: thread._id
+        }
     })
 
     return res
@@ -337,6 +481,16 @@ const deleteCommentReply = asyncHandler(async (req, res) => {
         updatedBy: req.user._id
     })
 
+    await recordActivity({
+        noteId,
+        actor: req.user,
+        type: "REPLY_DELETED",
+        metadata: {
+            threadId: thread._id,
+            replyId
+        }
+    })
+
     const populatedThread = await populateThreadUsers(
         CommentThread.findById(thread._id)
     )
@@ -352,6 +506,7 @@ export {
     deleteCommentReply,
     deleteCommentThread,
     getNoteCommentThreads,
+    markCommentThreadAsRead,
     reopenCommentThread,
     resolveCommentThread
 }

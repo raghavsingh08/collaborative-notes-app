@@ -6,7 +6,7 @@ const CommentDiscussionView = ({ thread, onBack, onReply, onResolve, onReopen, o
     const [isSubmitting, setIsSubmitting] = useState(false)
     const messagesEndRef = useRef(null)
 
-    const isResolved = thread.status === 'resolved'
+    const isResolved = thread.resolved === true || thread.status === 'resolved'
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -58,16 +58,30 @@ const CommentDiscussionView = ({ thread, onBack, onReply, onResolve, onReopen, o
         const canDeleteReply = isSameUser(currentUser, noteOwner) || isSameUser(currentUser, item.createdBy || item.author)
         if (!item) return null
         return (
-            <div key={item._id || Math.random()} style={{
+            <div key={item._id || Math.random()}
+                 className={!isMain ? "comment-reply-animate" : ""}
+                 style={{
                 marginBottom: '16px',
-                padding: '12px',
+                padding: '16px',
                 backgroundColor: 'var(--surface-color)',
                 borderRadius: '8px',
                 border: isMain ? '1px solid var(--accent)' : '1px solid var(--border)',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                boxShadow: isMain ? 'var(--shadow-sm)' : 'none',
+                position: 'relative'
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-color)' }}>
+                {/* Connector line for replies */}
+                {!isMain && (
+                    <div style={{
+                        position: 'absolute',
+                        left: '-24px',
+                        top: '50%',
+                        width: '24px',
+                        height: '1px',
+                        backgroundColor: 'var(--border)'
+                    }} />
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-color)' }}>
                         {resolveAuthorName(item)}
                     </div>
                     {!isMain && canDeleteReply && (
@@ -83,10 +97,10 @@ const CommentDiscussionView = ({ thread, onBack, onReply, onResolve, onReopen, o
                         </button>
                     )}
                 </div>
-                <div style={{ fontSize: '14px', color: 'var(--text-color)', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>
+                <div style={{ fontSize: '14px', color: 'var(--text-color)', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
                     {item.body || <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>No comment body</span>}
                 </div>
-                <div style={{ textAlign: 'right', fontSize: '10px', color: 'var(--muted)', marginTop: '6px' }}>
+                <div style={{ textAlign: 'right', fontSize: '11px', color: 'var(--muted)', marginTop: '8px' }}>
                     {formatFullTime(item.createdAt)}
                 </div>
             </div>
@@ -166,7 +180,13 @@ const CommentDiscussionView = ({ thread, onBack, onReply, onResolve, onReopen, o
                         No main comment found
                     </div>
                 )}
-                {sortedReplies.map(reply => renderMessage(reply, false))}
+
+                {sortedReplies.length > 0 && (
+                    <div style={{ position: 'relative', paddingLeft: '24px', marginLeft: '16px', borderLeft: '2px solid var(--border)' }}>
+                        {sortedReplies.map(reply => renderMessage(reply, false))}
+                    </div>
+                )}
+
                 <div ref={messagesEndRef} />
             </div>
 

@@ -85,7 +85,8 @@ const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate,
                     // Optional: Brief highlight flash using native dom
                     if (dom.style) {
                         const original = dom.style.backgroundColor
-                        dom.style.backgroundColor = 'rgba(250, 204, 21, 0.6)'
+                        dom.style.transition = 'background-color 0.3s'
+                        dom.style.backgroundColor = 'rgba(124, 58, 237, 0.4)'
                         setTimeout(() => dom.style.backgroundColor = original, 1000)
                     }
                 }
@@ -129,6 +130,51 @@ const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate,
             }
         }
     }, [editor, hasLoaded, initialContent, initialContentJson, ydoc, syncStatus]);
+
+    useEffect(() => {
+        if (!editor || !editor.view.dom) return;
+        
+        const dom = editor.view.dom;
+        
+        const handleMouseOver = (e) => {
+            const commentNode = e.target.closest('[data-comment-id]');
+            if (commentNode) {
+                const anchorId = commentNode.getAttribute('data-comment-id');
+                window.dispatchEvent(new CustomEvent('editor:comment-hover', { detail: { anchorId, isHovering: true } }));
+            }
+        };
+        
+        const handleMouseOut = (e) => {
+            const commentNode = e.target.closest('[data-comment-id]');
+            if (commentNode) {
+                const anchorId = commentNode.getAttribute('data-comment-id');
+                window.dispatchEvent(new CustomEvent('editor:comment-hover', { detail: { anchorId, isHovering: false } }));
+            }
+        };
+        
+        const handleSidebarHover = (e) => {
+            const { anchorId, isHovering } = e.detail;
+            if (!anchorId) return;
+            const nodes = dom.querySelectorAll(`[data-comment-id="${anchorId}"]`);
+            nodes.forEach(node => {
+                if (isHovering) {
+                    node.classList.add('comment-highlighted-text');
+                } else {
+                    node.classList.remove('comment-highlighted-text');
+                }
+            });
+        };
+
+        dom.addEventListener('mouseover', handleMouseOver);
+        dom.addEventListener('mouseout', handleMouseOut);
+        window.addEventListener('sidebar:comment-hover', handleSidebarHover);
+        
+        return () => {
+            dom.removeEventListener('mouseover', handleMouseOver);
+            dom.removeEventListener('mouseout', handleMouseOut);
+            window.removeEventListener('sidebar:comment-hover', handleSidebarHover);
+        };
+    }, [editor]);
 
     return (
         <>

@@ -14,6 +14,7 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [newCommentText, setNewCommentText] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [threadFilter, setThreadFilter] = useState('open')
     const commentsListRef = useRef(null)
 
     const fetchComments = useCallback(async (background = false) => {
@@ -131,6 +132,7 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     const handleResolve = async (threadId) => {
         try {
             await resolveComment(threadId)
+            await fetchComments(true)
         } catch (err) {
             console.error('Failed to resolve:', err)
             alert('Failed to resolve thread')
@@ -175,8 +177,14 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     }
 
     const safeThreads = Array.isArray(threads) ? threads : []
-    const openThreads = safeThreads.filter(t => t.status !== 'resolved')
-    const resolvedThreads = safeThreads.filter(t => t.status === 'resolved')
+    const isResolvedThread = (thread) => thread.resolved === true || thread.status === 'resolved'
+    const openThreads = safeThreads.filter(thread => !isResolvedThread(thread))
+    const resolvedThreads = safeThreads.filter(isResolvedThread)
+    const visibleThreads = threadFilter === 'resolved'
+        ? resolvedThreads
+        : threadFilter === 'all'
+            ? safeThreads
+            : openThreads
     
     const activeThread = activeThreadId ? safeThreads.find(t => t._id === activeThreadId) : null
 
@@ -187,27 +195,67 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
             setActiveThreadId(null)
         }
     }, [activeThreadId, threads, setActiveThreadId])
+    useEffect(() => {
+        const handleEditorHover = (e) => {
+            const { anchorId, isHovering } = e.detail;
+            const card = document.getElementById(`comment-card-${anchorId}`);
+            if (card) {
+                if (isHovering) {
+                    card.classList.add('comment-card-highlighted');
+                    // Scroll into view gently if outside viewport
+                    const rect = card.getBoundingClientRect();
+                    const containerRect = commentsListRef.current?.getBoundingClientRect();
+                    if (containerRect && (rect.top < containerRect.top || rect.bottom > containerRect.bottom)) {
+                        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                } else {
+                    card.classList.remove('comment-card-highlighted');
+                }
+            }
+        };
 
+        const handleScrollToComment = (e) => {
+            const { anchorId } = e.detail;
+            // Wait slightly to ensure rendering if sidebar was closed
+            setTimeout(() => {
+                const card = document.getElementById(`comment-card-${anchorId}`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.classList.remove('comment-card-flashed');
+                    // trigger reflow
+                    void card.offsetWidth;
+                    card.classList.add('comment-card-flashed');
+                }
+            }, 50);
+        };
+
+        window.addEventListener('editor:comment-hover', handleEditorHover);
+        window.addEventListener('sidebar:scroll-to-comment', handleScrollToComment);
+
+        return () => {
+            window.removeEventListener('editor:comment-hover', handleEditorHover);
+            window.removeEventListener('sidebar:scroll-to-comment', handleScrollToComment);
+        };
+    }, []);
     const isSelectionValid = normalizedSelection.length >= 2 && normalizedSelection.length <= 300;
     const canAddComment = editorSelection && isSelectionValid && !editorSelection.hasExistingComment;
     const commentWarning = editorSelection?.hasExistingComment 
         ? "This text already has a comment." 
-        : (normalizedSelection.length > 300 ? "Please select a shorter text (maximum 300 characters)." : (normalizedSelection.length < 2 ? "Please select at least 2 non-whitespace characters." : ""));
+        : (normalizedSelection.length > 300 ? "Please select a shorter text (maximum 300 characters)." : "");
 
     return (
         <aside className="collaboration-panel comments-sidebar" aria-label="Comments" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <div>
-                    <p className="eyebrow">Discussion</p>
-                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <MessageSquare size={18} />
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '600', margin: 0, color: 'var(--text)' }}>
+                        <MessageSquare size={16} color="var(--muted-strong)" />
                         Comments
                     </h2>
                 </div>
                 {!activeThreadId && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {commentWarning && (
-                            <span style={{ fontSize: '11px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic', maxWidth: '140px', textAlign: 'right', lineHeight: '1.2' }}>
                                 {commentWarning}
                             </span>
                         )}
@@ -215,15 +263,37 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                             className="icon-button" 
                             onClick={() => setIsAddModalOpen(true)}
                             disabled={!canAddComment}
-                            style={{ opacity: canAddComment ? 1 : 0.5, cursor: canAddComment ? 'pointer' : 'not-allowed' }}
+                            style={{ opacity: canAddComment ? 1 : 0.5, cursor: canAddComment ? 'pointer' : 'not-allowed', color: 'var(--text)', backgroundColor: canAddComment ? 'var(--skeleton-base)' : 'transparent' }}
                             aria-label="New comment"
                             title={commentWarning || "New comment"}
                         >
-                            <Plus size={18} />
+                            <Plus size={16} />
                         </button>
                     </div>
                 )}
             </div>
+
+            {!activeThreadId && (
+                <div className="comment-filter-tabs" role="tablist" aria-label="Filter comment threads">
+                    {[
+                        { id: 'open', label: 'Open', count: openThreads.length },
+                        { id: 'resolved', label: 'Resolved', count: resolvedThreads.length },
+                        { id: 'all', label: 'All', count: safeThreads.length }
+                    ].map(filter => (
+                        <button
+                            key={filter.id}
+                            className={`comment-filter-tab ${threadFilter === filter.id ? 'is-active' : ''}`}
+                            type="button"
+                            role="tab"
+                            aria-selected={threadFilter === filter.id}
+                            onClick={() => setThreadFilter(filter.id)}
+                        >
+                            {filter.label}
+                            <span>{filter.count}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {isLoading && threads.length === 0 && <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Loading comments...</p>}
             {error && <p style={{ fontSize: '13px', color: 'var(--danger, #ef4444)' }}>{error}</p>}
@@ -243,15 +313,22 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                             noteOwner={noteOwner}
                         />
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {openThreads.length === 0 && resolvedThreads.length === 0 && (
-                                <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted)' }}>
-                                    <MessageSquare size={24} style={{ opacity: 0.5, marginBottom: '8px' }} />
-                                    <p style={{ fontSize: '13px', margin: 0 }}>No comments yet.</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                            {safeThreads.length === 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, textAlign: 'center', padding: '40px 16px', color: 'var(--muted-strong)' }}>
+                                    <MessageSquare size={28} style={{ opacity: 0.3, marginBottom: '16px', color: 'var(--text)' }} />
+                                    <p style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 6px 0', color: 'var(--text)' }}>Discussion</p>
+                                    <p style={{ fontSize: '13px', margin: 0, color: 'var(--muted)', lineHeight: '1.4' }}>Highlight any text in the document<br/>to start the first discussion.</p>
                                 </div>
                             )}
 
-                            {openThreads.map(thread => (
+                            {safeThreads.length > 0 && visibleThreads.length === 0 && (
+                                <div className="comment-filter-empty">
+                                    No {threadFilter} comment threads.
+                                </div>
+                            )}
+
+                            {visibleThreads.map(thread => (
                                 <CommentSummaryCard
                                     key={thread._id}
                                     thread={thread}
@@ -259,20 +336,6 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                                 />
                             ))}
 
-                            {resolvedThreads.length > 0 && (
-                                <div style={{ marginTop: '24px' }}>
-                                    <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
-                                        Resolved ({resolvedThreads.length})
-                                    </h3>
-                                    {resolvedThreads.map(thread => (
-                                        <CommentSummaryCard
-                                            key={thread._id}
-                                            thread={thread}
-                                            onClick={() => handleThreadClick(thread._id)}
-                                        />
-                                    ))}
-                                </div>
-                            )}
                         </div>
                     )}
                 </div>

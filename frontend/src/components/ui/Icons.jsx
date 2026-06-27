@@ -130,3 +130,9 @@ export const IconLogOut = ({ size = 16 }) => (
         <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
 )
+
+export const IconChevronDown = ({ size = 16 }) => (
+    <svg {...iconProps(size)}>
+        <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+)

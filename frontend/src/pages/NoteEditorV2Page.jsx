@@ -123,74 +123,117 @@ const getAwarenessInitials = (user) => {
         .toUpperCase() || "A"
 }
 
-const ActiveCollaboratorsStack = ({ currentUser, currentUserId }) => {
-    const { awareness, ydoc } = useCollaboration() || {}
-    const [, setAwarenessVersion] = useState(0)
+const getAwarenessPresence = (state) => {
+    const status = ["editing", "viewing", "idle"].includes(state?.presence?.status)
+        ? state.presence.status
+        : "viewing"
+
+    return {
+        status,
+        lastActivity: state?.presence?.lastActivity || null
+    }
+}
+
+const deriveActiveCollaborators = ({ awareness, currentUser, currentUserId, ydoc }) => {
+    const localClientId = awareness?.clientID ?? ydoc?.clientID ?? "current"
+    const localState = awareness?.getLocalState()
+    const currentUserAvatar = {
+        ...currentUser,
+        clientId: String(localClientId),
+        resolvedId: String(currentUserId || "current"),
+        name: currentUser?.name || currentUser?.username || currentUser?.email || "You",
+        color: "var(--accent)",
+        presence: getAwarenessPresence(localState)
+    }
+    const remoteUsers = []
+
+    awareness?.getStates().forEach((state, clientId) => {
+        const awarenessUser = getAwarenessUser(state)
+
+        if (!awarenessUser || String(clientId) === String(localClientId)) {
+            return
+        }
+
+        remoteUsers.push({
+            ...awarenessUser,
+            clientId: String(clientId),
+            name: getAwarenessDisplayName(awarenessUser),
+            presence: getAwarenessPresence(state)
+        })
+    })
+
+    const seenUserIds = new Set([String(currentUserId || "current")])
+    const uniqueRemoteUsers = remoteUsers.reduce((users, remoteUser) => {
+        const resolvedId = String(
+            remoteUser.userId || remoteUser._id || remoteUser.id || `fallback-client-${remoteUser.clientId}`
+        )
+
+        if (seenUserIds.has(resolvedId)) {
+            return users
+        }
+
+        seenUserIds.add(resolvedId)
+        users.push({ ...remoteUser, resolvedId })
+        return users
+    }, [])
+
+    uniqueRemoteUsers.sort((a, b) => a.name.localeCompare(b.name))
+    return [currentUserAvatar, ...uniqueRemoteUsers]
+}
+
+const haveSameCollaborators = (current, next) => {
+    return current.length === next.length && current.every((user, index) => {
+        const nextUser = next[index]
+
+        return user.resolvedId === nextUser.resolvedId
+            && user.clientId === nextUser.clientId
+            && user.name === nextUser.name
+            && user.color === nextUser.color
+            && user.presence?.status === nextUser.presence?.status
+    })
+}
+
+const ActiveCollaboratorsStack = ({ currentUser, currentUserId, isConnected }) => {
+    const { awareness, ydoc, syncStatus } = useCollaboration() || {}
+    const [collaborators, setCollaborators] = useState(() => deriveActiveCollaborators({
+        awareness,
+        currentUser,
+        currentUserId,
+        ydoc
+    }))
+
+    const hydrateCollaborators = useCallback(() => {
+        const nextCollaborators = deriveActiveCollaborators({
+            awareness,
+            currentUser,
+            currentUserId,
+            ydoc
+        })
+
+        setCollaborators((current) => (
+            haveSameCollaborators(current, nextCollaborators) ? current : nextCollaborators
+        ))
+    }, [awareness, currentUser, currentUserId, ydoc])
 
     useEffect(() => {
-        if (!awareness) return
+        if (!awareness) {
+            hydrateCollaborators()
+            return undefined
+        }
 
-        const triggerRender = () => setAwarenessVersion((version) => version + 1)
-        
-        // Listen to both just to be absolutely certain we catch the state mutation
-        awareness.on("update", triggerRender)
-        awareness.on("change", triggerRender)
-        
+        awareness.on("change", hydrateCollaborators)
+        hydrateCollaborators()
+
         return () => {
-            awareness.off("update", triggerRender)
-            awareness.off("change", triggerRender)
+            awareness.off("change", hydrateCollaborators)
         }
-    }, [awareness])
+    }, [awareness, hydrateCollaborators])
 
-    const collaborators = (() => {
-        const currentUserAvatar = {
-            ...currentUser,
-            clientId: String(ydoc?.clientID || "current"),
-            resolvedId: String(currentUserId || "current"),
-            name: currentUser?.name || currentUser?.username || currentUser?.email || "You",
-            color: "var(--accent)"
+    useEffect(() => {
+        if (isConnected || syncStatus?.isComplete) {
+            hydrateCollaborators()
         }
-
-        const rawUsers = []
-        const statesMap = awareness?.getStates()
-
-        statesMap?.forEach((state, clientId) => {
-            const awarenessUser = getAwarenessUser(state)
-            if (awarenessUser) {
-                rawUsers.push({
-                    ...awarenessUser,
-                    clientId: String(clientId),
-                    name: getAwarenessDisplayName(awarenessUser)
-                })
-            }
-        })
-
-        const seenUserIds = new Set()
-        const uniqueRemoteUsers = []
-
-        // Mark the current user as seen so we don't duplicate them if their awareness state arrives
-        seenUserIds.add(String(currentUserId || "current"))
-
-        rawUsers.forEach(u => {
-            // Exclude our own CRDT state explicitly just in case the ID match fails
-            if (u.clientId === String(ydoc?.clientID)) return
-
-            const normalizedId = String(u.userId || u._id || u.id || `fallback-client-${u.clientId}`)
-            
-            if (!seenUserIds.has(normalizedId)) {
-                seenUserIds.add(normalizedId)
-                uniqueRemoteUsers.push({
-                    ...u,
-                    resolvedId: normalizedId
-                })
-            }
-        })
-
-        uniqueRemoteUsers.sort((a, b) => a.name.localeCompare(b.name))
-        const finalUsers = [currentUserAvatar, ...uniqueRemoteUsers]
-        
-        return finalUsers
-    })()
+    }, [hydrateCollaborators, isConnected, syncStatus?.isComplete])
 
     const maxVisible = 4
     const visible = collaborators.slice(0, maxVisible)
@@ -201,10 +244,15 @@ const ActiveCollaboratorsStack = ({ currentUser, currentUserId }) => {
             {visible.map((user, idx) => {
                 const initials = getAwarenessInitials(user)
                 const isMe = user.resolvedId === (currentUserId || "current")
+                const displayName = getAwarenessDisplayName(user)
+                const presenceStatus = user.presence?.status || "viewing"
+                const presenceLabel = presenceStatus[0].toUpperCase() + presenceStatus.slice(1)
                 return (
                     <div 
                         key={user.resolvedId || idx}
-                        title={isMe ? `${getAwarenessDisplayName(user)} (You)` : getAwarenessDisplayName(user)}
+                        className={`active-collaborator-avatar presence-${presenceStatus}`}
+                        tabIndex={0}
+                        aria-label={`${displayName}${isMe ? " (You)" : ""}, ${presenceLabel}`}
                         style={{
                             width: '24px',
                             height: '24px',
@@ -225,6 +273,14 @@ const ActiveCollaboratorsStack = ({ currentUser, currentUserId }) => {
                         }}
                     >
                         {initials}
+                        <span className="collaborator-presence-dot" aria-hidden="true" />
+                        <span className="collaborator-presence-tooltip" role="tooltip">
+                            <strong>{displayName}{isMe ? " (You)" : ""}</strong>
+                            <span className="collaborator-presence-tooltip-status">
+                                <span className="collaborator-presence-tooltip-dot" aria-hidden="true" />
+                                {presenceLabel}
+                            </span>
+                        </span>
                     </div>
                 )
             })}
@@ -506,7 +562,11 @@ const NoteEditorV2Page = () => {
                             {saveStatus === "Unsaved changes" ? "Unsaved" : saveStatus}
                         </span>
 
-                        <ActiveCollaboratorsStack currentUser={user} currentUserId={currentUserId} />
+                        <ActiveCollaboratorsStack
+                            currentUser={user}
+                            currentUserId={currentUserId}
+                            isConnected={isConnected}
+                        />
                     </div>
 
                     <div className="editor-toolbar-status">
@@ -628,7 +688,14 @@ const NoteEditorV2Page = () => {
                             hasLoaded={hasLoadedNote.current}
                             editorRef={editorRef}
                             onSelectionChange={setEditorSelection}
-                            onCommentClicked={(anchorId) => setActiveThreadId(anchorId)}
+                            onCommentClicked={(anchorId) => {
+                                setIsHistoryOpen(false)
+                                setIsActivityOpen(false)
+                                // We use a short timeout to ensure the sidebar is mounted if it was closed
+                                setTimeout(() => {
+                                    window.dispatchEvent(new CustomEvent('sidebar:scroll-to-comment', { detail: { anchorId } }));
+                                }, 50)
+                            }}
                             onUpdate={(payload) => {
                                 if (hasLoadedNote.current) {
                                     latestPayloadRef.current = payload

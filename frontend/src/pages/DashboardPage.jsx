@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { createNote, getNotes, getSharedUsers } from "../api/notes.api"
+import { createNote, getNotes, getSharedUsers, deleteNote, removeSharedUser } from "../api/notes.api"
 import { useAuth } from "../context/AuthContext"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
-import { Badge, CollaboratorAvatarGroup, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
-import { IconNote, IconPlus, IconSearch, IconUsers } from "../components/ui/Icons"
+import { AvatarStack, Badge, CollaboratorAvatarGroup, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
+import { IconChevronDown, IconNote, IconPlus, IconSearch, IconUsers, IconMoreHorizontal } from "../components/ui/Icons"
 import UserMenu from "../components/ui/UserMenu"
-import { formatDateTime } from "../components/ui/uiUtils"
+import { formatDateTime, getInitials, getDisplayName } from "../components/ui/uiUtils"
 import usePageTitle from "../hooks/usePageTitle"
+import useWorkspacePresence from "../hooks/useWorkspacePresence"
 
 const getNotesFromResponse = (response) => {
     return response?.data?.notes || response?.data?.data?.notes || response?.data?.data || response?.data || []
@@ -29,19 +30,108 @@ const getCollaboratorsFromNote = (note) => {
         : []
 }
 
+const ActiveNotePresence = ({ users = [] }) => {
+    if (users.length === 0) {
+        return null
+    }
+
+    const firstUserName = users[0]?.name || users[0]?.username || users[0]?.email || "Someone"
+    const label = users.length === 1 ? `${firstUserName} editing` : `${users.length} active`
+
+    return (
+        <div className="workspace-note-presence" title={label} aria-label={label}>
+            <span className="workspace-live-dot" aria-hidden="true" />
+            <span className="workspace-presence-label">{label}</span>
+        </div>
+    )
+}
+
+const renderStructuredPreview = (content) => {
+    if (!content || !content.trim()) {
+        return (
+            <div className="mock-document-content empty-preview">
+                <p>No content yet. Start writing...</p>
+            </div>
+        )
+    }
+
+    const lines = content.split('\n').filter(line => line.trim().length > 0).slice(0, 5)
+    const elements = []
+    let currentList = []
+    
+    const flushList = () => {
+        if (currentList.length > 0) {
+            elements.push(<ul key={`ul-${elements.length}`}>{currentList}</ul>)
+            currentList = []
+        }
+    }
+
+    lines.forEach((line, index) => {
+        if (line.startsWith('# ')) {
+            flushList()
+            elements.push(<h1 key={index}>{line.substring(2).trim()}</h1>)
+        } else if (line.startsWith('## ')) {
+            flushList()
+            elements.push(<h2 key={index}>{line.substring(3).trim()}</h2>)
+        } else if (line.startsWith('- ') || line.startsWith('* ')) {
+            currentList.push(<li key={index}>{line.substring(2).trim()}</li>)
+        } else if (line.startsWith('- [ ] ') || line.startsWith('- [x] ')) {
+            currentList.push(<li key={index} className="preview-checklist-item">{line.substring(6).trim()}</li>)
+        } else {
+            flushList()
+            elements.push(<p key={index}>{line.trim()}</p>)
+        }
+    })
+    flushList()
+
+    return (
+        <div className="mock-document-content">
+            {elements}
+            {content.split('\n').filter(l => l.trim().length > 0).length > 5 && (
+                <p className="preview-ellipsis">...</p>
+            )}
+        </div>
+    )
+}
+
 const DashboardPage = () => {
     usePageTitle("Dashboard")
     const navigate = useNavigate()
     const { user } = useAuth()
+    const presenceByNoteId = useWorkspacePresence()
     const [notes, setNotes] = useState([])
     const [noteCollaborators, setNoteCollaborators] = useState({})
     const [collaborationNote, setCollaborationNote] = useState(null)
     const [title, setTitle] = useState("")
     const [query, setQuery] = useState("")
     const [activeFilter, setActiveFilter] = useState("all")
-    const [selectedNoteId, setSelectedNoteId] = useState("")
+    const [selectedNoteId, setSelectedNoteId] = useState(null)
+    const [activeDropdownNoteId, setActiveDropdownNoteId] = useState(null)
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState("")
+    const dropdownRef = useRef(null)
+
+    useEffect(() => {
+        if (!activeDropdownNoteId) return undefined
+
+        const handlePointerDown = (event) => {
+            if (!dropdownRef.current?.contains(event.target)) {
+                setActiveDropdownNoteId(null)
+            }
+        }
+
+        const handleKeyDown = (event) => {
+            if (event.key === "Escape") setActiveDropdownNoteId(null)
+        }
+
+        document.addEventListener("pointerdown", handlePointerDown)
+        document.addEventListener("keydown", handleKeyDown)
+
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown)
+            document.removeEventListener("keydown", handleKeyDown)
+        }
+    }, [activeDropdownNoteId])
 
     // Derived state for validation
     const trimmedTitle = title.trim()
@@ -127,12 +217,16 @@ const DashboardPage = () => {
     }
 
     const handleCreateFirstNote = () => {
-        createNoteFromTitle("Untitled note")
+        createNoteFromTitle("Untitled document")
     }
 
     const getCollaboratorsForNote = (note) => {
         const noteId = note._id || note.id
         return noteCollaborators[noteId] || getCollaboratorsFromNote(note)
+    }
+
+    const getActiveUsersForNote = (note) => {
+        return presenceByNoteId[String(note._id || note.id)] || []
     }
 
     const filteredByOwnership = notes.filter((note) => {
@@ -142,9 +236,19 @@ const DashboardPage = () => {
     })
 
     const filteredNotes = filteredByOwnership.filter((note) => {
-        const noteTitle = note.title || "Untitled"
+        const noteTitle = note.title || "Untitled document"
         return noteTitle.toLowerCase().includes(query.trim().toLowerCase())
     })
+
+    const sortedFilteredNotes = [...filteredNotes].sort((a, b) => {
+        const dateA = new Date(a.updatedAt || a.createdAt || 0)
+        const dateB = new Date(b.updatedAt || b.createdAt || 0)
+        return dateB - dateA
+    })
+
+    const showRecent = !query && (activeFilter === "all" || activeFilter === "owned") && sortedFilteredNotes.length > 0
+    const recentNotes = showRecent ? sortedFilteredNotes.slice(0, 3) : []
+    const listNotes = showRecent ? sortedFilteredNotes.slice(3) : sortedFilteredNotes
 
     const ownedCount = notes.filter(isOwnedNote).length
     const sharedCount = Math.max(notes.length - ownedCount, 0)
@@ -166,38 +270,31 @@ const DashboardPage = () => {
         <main className="app-shell">
             {/* ── Sidebar ── */}
             <aside className="sidebar">
-                <div className="brand-row">
+                <div className="sidebar-workspace">
                     <UserMenu />
-                    <div>
-                        <p className="eyebrow">Collaborative Notes</p>
-                        <h1>{displayName}</h1>
+                    <div className="sidebar-workspace-info">
+                        <span className="sidebar-workspace-name">
+                            {displayName}'s Workspace
+                            <IconChevronDown size={14} />
+                        </span>
+                        <span className="sidebar-workspace-plan">Free Plan</span>
                     </div>
                 </div>
 
-                <form className="create-note-form" onSubmit={handleCreateNote}>
-                    <label htmlFor="new-note-title">New note</label>
-                    <div className="create-note-control">
-                        <input
-                            id="new-note-title"
-                            type="text"
-                            value={title}
-                            onChange={(event) => setTitle(event.target.value)}
-                            placeholder="Note title…"
-                            aria-label="Note title"
-                            aria-invalid={showTitleError}
-                            aria-describedby={showTitleError ? "title-error" : undefined}
-                        />
-                        <button type="submit" disabled={!isTitleValid}>
-                            <IconPlus size={14} />
-                            Create
-                        </button>
-                    </div>
-                    {showTitleError && (
-                        <p id="title-error" className="validation-message" role="alert">
-                            Please enter a title with at least 2 characters.
-                        </p>
-                    )}
-                </form>
+                <div className="sidebar-new-action">
+                    <button 
+                        className="new-document-button" 
+                        onClick={handleCreateFirstNote}
+                    >
+                        <span className="new-document-icon">
+                            <IconPlus size={16} />
+                        </span>
+                        <div className="new-document-text">
+                            <strong>New Document</strong>
+                            <span>Start writing or planning</span>
+                        </div>
+                    </button>
+                </div>
 
                 <nav className="sidebar-nav" aria-label="Workspace filters">
                     <button
@@ -239,20 +336,22 @@ const DashboardPage = () => {
             {/* ── Dashboard content ── */}
             <section className="dashboard-panel" aria-labelledby="dashboard-title">
                 <header className="dashboard-header">
-                    <div>
-                        <p className="eyebrow">Workspace</p>
-                        <h2 id="dashboard-title">Notes</h2>
-                    </div>
-                    <label className="search-wrap" htmlFor="search-notes">
-                        <span className="search-icon" aria-hidden="true">
-                            <IconSearch size={15} />
+                    <div className="dashboard-header-titles">
+                        <h2 id="dashboard-title">
+                            {activeFilter === "all" ? "All Documents" : activeFilter === "owned" ? "Owned by You" : "Shared with You"}
+                        </h2>
+                        <span className="dashboard-header-subtitle">
+                            {activeFilter === "all" ? "Manage your notes, shared work, and collaboration." : `${filteredNotes.length} documents`}
                         </span>
+                    </div>
+                    <label className="dashboard-search" htmlFor="search-notes">
+                        <IconSearch size={14} className="dashboard-search-icon" />
                         <input
                             id="search-notes"
                             type="search"
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Search notes…"
+                            placeholder="Search documents..."
                             aria-label="Search notes"
                         />
                     </label>
@@ -285,52 +384,361 @@ const DashboardPage = () => {
                         }
                     />
                 ) : (
-                    <div className="notes-list" role="list">
-                        {filteredNotes.map((note) => {
-                            const noteId = note._id || note.id
-                            const isOwned = isOwnedNote(note)
-                            const collaborators = getCollaboratorsForNote(note)
+                    <div className="dashboard-content-scroll">
+                        {showRecent && recentNotes.length > 0 && (
+                            <div className="dashboard-section recent-work-section">
+                                <h3 className="dashboard-section-title">Continue Working</h3>
+                                <div className="editorial-grid">
+                                    {/* Primary Featured Card (2/3 width) */}
+                                    {(() => {
+                                        const featuredNote = recentNotes[0]
+                                        const noteId = featuredNote._id || featuredNote.id
+                                        const isOwned = isOwnedNote(featuredNote)
+                                        const collaborators = getCollaboratorsForNote(featuredNote)
+                                        const activeUsers = getActiveUsersForNote(featuredNote)
 
-                            return (
-                                <div
-                                    className={`note-row ${selectedNoteId === noteId ? "selected" : ""}`}
-                                    role="listitem"
-                                    tabIndex={0}
-                                    key={noteId}
-                                    onClick={() => {
-                                        setSelectedNoteId(noteId)
-                                        navigate(`/notes/${noteId}`)
-                                    }}
-                                    onKeyDown={(event) => {
-                                        if (event.key === "Enter" || event.key === " ") {
-                                            event.preventDefault()
-                                            setSelectedNoteId(noteId)
-                                            navigate(`/notes/${noteId}`)
-                                        }
-                                    }}
-                                >
-                                    <span className="note-row-main">
-                                        <strong>{note.title || "Untitled"}</strong>
-                                        <small>{formatDateTime(note.updatedAt || note.createdAt)}</small>
-                                    </span>
-                                    <span className="note-row-meta">
-                                        <CollaboratorAvatarGroup
-                                            users={collaborators}
-                                            owner={note.owner || note.ownerId || note.createdBy}
-                                            currentUser={user}
-                                            onClick={(event) => {
-                                                event.stopPropagation()
-                                                setCollaborationNote(note)
-                                            }}
-                                            label={`Manage collaborators for ${note.title || "Untitled"}`}
-                                        />
-                                        <Badge tone={isOwned ? "success" : "info"}>
-                                            {isOwned ? "Owned" : "Shared"}
-                                        </Badge>
-                                    </span>
+                                        return (
+                                            <div
+                                                className={`featured-card ${selectedNoteId === noteId ? "selected" : ""}`}
+                                                role="button"
+                                                tabIndex={0}
+                                                key={noteId}
+                                                onClick={() => {
+                                                    setSelectedNoteId(noteId)
+                                                    navigate(`/notes/${noteId}`)
+                                                }}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === "Enter" || event.key === " ") {
+                                                        event.preventDefault()
+                                                        setSelectedNoteId(noteId)
+                                                        navigate(`/notes/${noteId}`)
+                                                    }
+                                                }}
+                                            >
+                                                <div className="featured-card-body">
+                                                    <h3 className="featured-card-title" style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '600', color: 'var(--text)' }}>
+                                                        {featuredNote.title || "Untitled document"}
+                                                    </h3>
+                                                    <div className="featured-card-preview">
+                                                        {renderStructuredPreview(featuredNote.content)}
+                                                    </div>
+                                                </div>
+                                                <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--border)' }} />
+                                                <div className="featured-card-header" style={{ marginBottom: '12px' }}>
+                                                    <div className="featured-card-meta-top">
+                                                        <IconNote size={16} className="subtle-icon" />
+                                                        <span className="featured-card-time">Edited {formatDateTime(featuredNote.updatedAt || featuredNote.createdAt)}</span>
+                                                    </div>
+                                                    {!isOwned && (
+                                                        <div className="note-status-shared">
+                                                            <span className="note-status-dot"></span> Shared
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="featured-card-footer">
+                                                    <div className="featured-card-collaborators-wrap">
+                                                        {collaborators.length > 0 && (
+                                                            <CollaboratorAvatarGroup
+                                                                users={collaborators}
+                                                                owner={featuredNote.owner || featuredNote.ownerId || featuredNote.createdBy}
+                                                                currentUser={user}
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation()
+                                                                    setCollaborationNote(featuredNote)
+                                                                }}
+                                                                label={`Manage collaborators for ${featuredNote.title || "Untitled document"}`}
+                                                            />
+                                                        )}
+                                                        {activeUsers.length > 0 && (
+                                                            <ActiveNotePresence users={activeUsers} />
+                                                        )}
+                                                    </div>
+                                                    <span className="continue-editing-action">Continue Editing &rarr;</span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })()}
+
+                                    {/* Stacked Secondary Cards (1/3 width) */}
+                                    {recentNotes.length > 1 && (
+                                        <div className="stacked-cards">
+                                            {recentNotes.slice(1).map((note) => {
+                                                const noteId = note._id || note.id
+                                                const isOwned = isOwnedNote(note)
+                                                const collaborators = getCollaboratorsForNote(note)
+                                                const activeUsers = getActiveUsersForNote(note)
+                                                
+                                                const realPreview = note.content 
+                                                    ? note.content.substring(0, 50).replace(/[#*`_]/g, '')
+                                                    : "No content yet. Start writing..."
+
+                                                return (
+                                                    <div
+                                                        className={`compact-card ${selectedNoteId === noteId ? "selected" : ""}`}
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        key={noteId}
+                                                        onClick={() => {
+                                                            setSelectedNoteId(noteId)
+                                                            navigate(`/notes/${noteId}`)
+                                                        }}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === "Enter" || event.key === " ") {
+                                                                event.preventDefault()
+                                                                setSelectedNoteId(noteId)
+                                                                navigate(`/notes/${noteId}`)
+                                                            }
+                                                        }}
+                                                    >
+                                                        <div className="compact-card-main">
+                                                            <div className="compact-card-info">
+                                                                <strong className="compact-card-title">{note.title || "Untitled document"}</strong>
+                                                                <span className="compact-card-preview">{realPreview}</span>
+                                                                <span className="compact-card-time">Edited {formatDateTime(note.updatedAt || note.createdAt)}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="compact-card-meta">
+                                                            <div className="compact-card-collaborators-wrap">
+                                                                {collaborators.length > 0 && (
+                                                                    <CollaboratorAvatarGroup
+                                                                        users={collaborators.slice(0, 2)}
+                                                                        owner={note.owner || note.ownerId || note.createdBy}
+                                                                        currentUser={user}
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation()
+                                                                            setCollaborationNote(note)
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                                {activeUsers.length > 0 && (
+                                                                    <ActiveNotePresence users={activeUsers} />
+                                                                )}
+                                                            </div>
+                                                            <span className="continue-editing-action compact">Continue &rarr;</span>
+                                                            {!isOwned && (
+                                                                <div className="note-status-shared">
+                                                                    <span className="note-status-dot"></span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
-                            )
-                        })}
+                            </div>
+                        )}
+
+                        {listNotes.length > 0 && (
+                            <div className="dashboard-section">
+                                {showRecent && <h3 className="dashboard-section-title">All Notes</h3>}
+                                <div className="notes-list" role="list">
+                                    {listNotes.map((note) => {
+                                        const noteId = note._id || note.id
+                                        const isOwned = isOwnedNote(note)
+                                        const collaborators = getCollaboratorsForNote(note)
+                                        const activeUsers = getActiveUsersForNote(note)
+                                        
+                                        // Real preview for the richer layout
+                                        const previewText = note.content || "No content yet. Start writing..."
+                                            
+                                        const isSharedView = activeFilter === "shared"
+                                        const rowClassName = `note-row ${selectedNoteId === noteId ? "selected" : ""} ${isSharedView ? "shared-note-row" : ""}`
+                                            
+                                        return (
+                                            <div
+                                                className={rowClassName}
+                                                role="listitem"
+                                                tabIndex={0}
+                                                key={noteId}
+                                                onClick={() => {
+                                                    setSelectedNoteId(noteId)
+                                                    navigate(`/notes/${noteId}`)
+                                                }}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === "Enter" || event.key === " ") {
+                                                        event.preventDefault()
+                                                        setSelectedNoteId(noteId)
+                                                        navigate(`/notes/${noteId}`)
+                                                    }
+                                                }}
+                                            >
+                                                <div className="note-row-icon">
+                                                    <IconNote size={18} />
+                                                </div>
+                                                <div className="note-row-main">
+                                                    <div className="note-row-title-wrap">
+                                                        <span className="note-row-title">{note.title || "Untitled document"}</span>
+                                                        {isSharedView && (note.unread || note.unreadCount > 0) && (
+                                                            <span className="shared-note-unread">{note.unreadCount || 1} unread</span>
+                                                        )}
+                                                    </div>
+                                                    <span className="note-row-preview">{previewText}</span>
+                                                </div>
+                                                <div className="note-row-meta">
+                                                    {isSharedView ? (
+                                                        <div className="shared-note-meta-content">
+                                                            <div className="shared-note-text-block">
+                                                                <div className="shared-note-timestamp">
+                                                                    Edited {formatDateTime(note.updatedAt || note.createdAt)}
+                                                                </div>
+                                                                <div className="shared-note-owner-row">
+                                                                    <span className="shared-owner-label">Owner • {getDisplayName(note.owner || note.ownerId || note.createdBy || "Owner")}</span>
+                                                                    {note.permission && (
+                                                                        <span className="shared-note-permission">{note.permission}</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="shared-note-avatars">
+                                                                {collaborators.length > 0 && (
+                                                                    <CollaboratorAvatarGroup
+                                                                        users={collaborators}
+                                                                        owner={note.owner || note.ownerId || note.createdBy}
+                                                                        currentUser={user}
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation()
+                                                                            setCollaborationNote(note)
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                                {activeUsers.length > 0 && (
+                                                                    <ActiveNotePresence users={activeUsers} />
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <span className="note-row-time">Edited {formatDateTime(note.updatedAt || note.createdAt)}</span>
+                                                            <div className="note-row-collaborators">
+                                                                {collaborators.length > 0 && (
+                                                                    <CollaboratorAvatarGroup
+                                                                        users={collaborators}
+                                                                        owner={note.owner || note.ownerId || note.createdBy}
+                                                                        currentUser={user}
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation()
+                                                                            setCollaborationNote(note)
+                                                                        }}
+                                                                        label={`Manage collaborators for ${note.title || "Untitled document"}`}
+                                                                    />
+                                                                )}
+                                                                {activeUsers.length > 0 && (
+                                                                    <ActiveNotePresence users={activeUsers} />
+                                                                )}
+                                                            </div>
+                                                            {!isOwned && (
+                                                                <div className="note-status-shared">
+                                                                    <span className="note-status-dot"></span> Shared
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <div className="note-row-actions">
+                                                    <button 
+                                                        className="row-action-btn"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            setSelectedNoteId(noteId)
+                                                            navigate(`/notes/${noteId}`)
+                                                        }}
+                                                    >
+                                                        Open
+                                                    </button>
+                                                    {isOwned && (
+                                                        <button 
+                                                            className="row-action-btn"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                setCollaborationNote(note)
+                                                            }}
+                                                        >
+                                                            Share
+                                                        </button>
+                                                    )}
+                                                    
+                                                    <div className="dropdown-container">
+                                                        <button 
+                                                            className="row-action-icon-btn"
+                                                            aria-label="More options"
+                                                            aria-haspopup="menu"
+                                                            aria-expanded={activeDropdownNoteId === noteId}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                setActiveDropdownNoteId(activeDropdownNoteId === noteId ? null : noteId)
+                                                            }}
+                                                        >
+                                                            <IconMoreHorizontal size={16} />
+                                                        </button>
+                                                        
+                                                        {activeDropdownNoteId === noteId && (
+                                                            <div className="more-dropdown-menu" role="menu" ref={dropdownRef} onClick={(e) => e.stopPropagation()}>
+                                                                {isOwned ? (
+                                                                    <>
+                                                                        <div className="dropdown-group">
+                                                                            <div className="dropdown-group-label">Available</div>
+                                                                            <button className="dropdown-item" disabled title="Coming soon">Rename</button>
+                                                                            <button className="dropdown-item" disabled title="Coming soon">Duplicate</button>
+                                                                            <button className="dropdown-item" disabled title="Coming soon">Version History</button>
+                                                                            <button className="dropdown-item" disabled title="Coming soon">Export</button>
+                                                                        </div>
+                                                                        <div className="dropdown-divider"></div>
+                                                                        <div className="dropdown-group">
+                                                                            <div className="dropdown-group-label">Coming Soon</div>
+                                                                            <button className="dropdown-item" disabled>Move</button>
+                                                                            <button className="dropdown-item" disabled>Pin</button>
+                                                                            <button className="dropdown-item" disabled>Archive</button>
+                                                                        </div>
+                                                                        <div className="dropdown-divider"></div>
+                                                                        <div className="dropdown-group">
+                                                                            <div className="dropdown-group-label danger">Danger Zone</div>
+                                                                            <button 
+                                                                                className="dropdown-item danger" 
+                                                                                onClick={() => {
+                                                                                    deleteNote(noteId).then(() => fetchNotes())
+                                                                                    setActiveDropdownNoteId(null)
+                                                                                }}
+                                                                            >
+                                                                                Delete
+                                                                            </button>
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <button 
+                                                                            className="dropdown-item" 
+                                                                            onClick={() => {
+                                                                                navigator.clipboard.writeText(window.location.origin + "/notes/" + noteId)
+                                                                                setActiveDropdownNoteId(null)
+                                                                            }}
+                                                                        >
+                                                                            Copy Link
+                                                                        </button>
+                                                                        <button className="dropdown-item" disabled title="Coming soon">Version History</button>
+                                                                        <button className="dropdown-item" disabled title="Coming soon">Activity Timeline</button>
+                                                                        <div className="dropdown-divider"></div>
+                                                                        <button 
+                                                                            className="dropdown-item danger" 
+                                                                            onClick={() => {
+                                                                                removeSharedUser(noteId, user.id || user._id).then(() => fetchNotes())
+                                                                                setActiveDropdownNoteId(null)
+                                                                            }}
+                                                                        >
+                                                                            Leave Shared Note
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </section>

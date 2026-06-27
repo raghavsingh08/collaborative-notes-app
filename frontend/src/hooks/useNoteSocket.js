@@ -78,6 +78,7 @@ const useNoteSocket = (noteId, onRemoteUpdate, onNoteSaved) => {
         socket.on("note:error", handleNoteError)
 
         return () => {
+            socket.emit("note:leave", noteId)
             socket.off("note:updated", handleNoteUpdated)
             socket.off("note:saved", handleNoteSaved)
             socket.off("note:active-users", handleActiveUsers)

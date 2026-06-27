@@ -5,33 +5,33 @@ export const formatActivityMessage = (event, currentUser) => {
     
     switch (event.type) {
         case 'NOTE_CREATED':
-            return `${actorName} created this note`;
+            return { actor: actorName, action: `created this document` };
         case 'NOTE_RENAMED':
-            return `${actorName} renamed the note`;
+            return { actor: actorName, action: `renamed the document` };
         case 'COLLABORATOR_ADDED':
             const addedUser = event.metadata?.addedUser?.name || event.metadata?.addedUser?.email || event.metadata?.email || "a collaborator";
-            return `${actorName} added ${addedUser}`;
+            return { actor: actorName, action: `added ${addedUser} as a collaborator` };
         case 'COLLABORATOR_REMOVED':
             const removedUser = event.metadata?.removedUser?.name || event.metadata?.removedUser?.email || event.metadata?.userId || "a collaborator";
-            return `${actorName} removed ${removedUser}`;
+            return { actor: actorName, action: `removed ${removedUser}` };
         case 'MANUAL_SAVE':
-            return `${actorName} manually saved`;
+            return { actor: actorName, action: `saved the document` };
         case 'VERSION_RESTORED':
-            return `${actorName} restored a version`;
+            return { actor: actorName, action: `restored Version ${event.metadata?.version || ''}`.trim() };
         case 'COMMENT_CREATED':
-            return `${actorName} added a comment`;
+            return { actor: actorName, action: `commented on the document` };
         case 'COMMENT_DELETED':
-            return `${actorName} deleted a comment`;
+            return { actor: actorName, action: `deleted a comment` };
         case 'REPLY_CREATED':
-            return `${actorName} replied to a comment`;
+            return { actor: actorName, action: `replied to a comment` };
         case 'REPLY_DELETED':
-            return `${actorName} deleted a reply`;
+            return { actor: actorName, action: `deleted a reply` };
         case 'COMMENT_RESOLVED':
-            return `${actorName} resolved a comment`;
+            return { actor: actorName, action: `resolved a comment` };
         case 'COMMENT_REOPENED':
-            return `${actorName} reopened a comment`;
+            return { actor: actorName, action: `reopened a comment` };
         default:
-            return `${actorName} performed an action`;
+            return { actor: actorName, action: `performed an action` };
     }
 }
 

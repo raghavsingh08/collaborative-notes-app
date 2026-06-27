@@ -45,6 +45,12 @@ const commentThreadSchema = new mongoose.Schema(
             default: "open",
             index: true
         },
+        resolved: {
+            type: Boolean,
+            default() {
+                return this.status === "resolved"
+            }
+        },
         createdBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
@@ -73,6 +79,15 @@ const commentThreadSchema = new mongoose.Schema(
         timestamps: true
     }
 )
+
+commentThreadSchema.pre("validate", function syncResolvedState() {
+    if (this.isModified("resolved") && !this.isModified("status")) {
+        this.status = this.resolved ? "resolved" : "open"
+        return
+    }
+
+    this.resolved = this.status === "resolved"
+})
 
 commentThreadSchema.index({ noteId: 1, status: 1, updatedAt: -1 })
 

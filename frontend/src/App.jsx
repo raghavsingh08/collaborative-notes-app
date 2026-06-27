@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom"
+import { Route, Routes, Navigate, useParams } from "react-router-dom"
 import ProtectedRoute from "./routes/ProtectedRoute"
 import PublicRoute from "./routes/PublicRoute"
 import HomePage from "./pages/HomePage"
@@ -9,6 +9,11 @@ import NoteEditorPage from "./pages/NoteEditorPage"
 import SettingsPage from "./pages/SettingsPage"
 import NotFoundPage from "./pages/NotFoundPage"
 import NoteEditorV2Page from "./pages/NoteEditorV2Page"
+
+const NoteEditorV2Redirect = () => {
+    const { noteId } = useParams()
+    return <Navigate to={`/notes/${noteId}`} replace />
+}
 
 const App = () => {
     return (
@@ -22,8 +27,9 @@ const App = () => {
 
             <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/notes/:noteId" element={<NoteEditorPage />} />
-                <Route path="/notes/:noteId/v2" element={<NoteEditorV2Page />} />
+                <Route path="/notes/:noteId" element={<NoteEditorV2Page />} />
+                <Route path="/notes/:noteId/v1" element={<NoteEditorPage />} />
+                <Route path="/notes/:noteId/v2" element={<NoteEditorV2Redirect />} />
                 <Route path="/settings" element={<SettingsPage />} />
             </Route>
 

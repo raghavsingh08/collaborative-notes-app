@@ -139,6 +139,18 @@ const canDeleteReply = (note, reply, userId) => {
     return isSameId(note.owner, userId) || isSameId(reply?.createdBy, userId)
 }
 
+const canManageThreadStatus = (note, thread, userId) => {
+    const isNoteOwner = isSameId(note.owner, userId)
+    const isThreadCreator = isSameId(thread.createdBy, userId)
+    const isEditor = note.sharedWith.some((editorId) => isSameId(editorId, userId))
+
+    return isNoteOwner || isThreadCreator || isEditor
+}
+
+const isThreadResolved = (thread) => {
+    return thread.resolved === true || thread.status === "resolved"
+}
+
 const getThreadLatestActivity = (thread) => {
     let latestActivityAt = thread.createdAt || new Date(0)
     let latestActivityBy = thread.createdBy
@@ -341,9 +353,24 @@ const addCommentReply = asyncHandler(async (req, res) => {
 const resolveCommentThread = asyncHandler(async (req, res) => {
     const { threadId } = req.params
 
-    const thread = await findAccessibleThread(threadId, req.user._id)
+    const { note, thread } = await findAccessibleThreadContext(threadId, req.user._id)
+
+    if (!canManageThreadStatus(note, thread, req.user._id)) {
+        throw new ApiError(403, "You do not have permission to resolve this thread")
+    }
+
+    if (isThreadResolved(thread)) {
+        const populatedThread = await populateThreadUsers(
+            CommentThread.findById(thread._id)
+        )
+
+        return res
+            .status(200)
+            .json(new ApiResponse(200, populatedThread, "Comment thread is already resolved"))
+    }
 
     thread.status = "resolved"
+    thread.resolved = true
     thread.resolvedBy = req.user._id
     thread.resolvedAt = new Date()
 
@@ -377,9 +404,24 @@ const resolveCommentThread = asyncHandler(async (req, res) => {
 const reopenCommentThread = asyncHandler(async (req, res) => {
     const { threadId } = req.params
 
-    const thread = await findAccessibleThread(threadId, req.user._id)
+    const { note, thread } = await findAccessibleThreadContext(threadId, req.user._id)
+
+    if (!canManageThreadStatus(note, thread, req.user._id)) {
+        throw new ApiError(403, "You do not have permission to reopen this thread")
+    }
+
+    if (!isThreadResolved(thread)) {
+        const populatedThread = await populateThreadUsers(
+            CommentThread.findById(thread._id)
+        )
+
+        return res
+            .status(200)
+            .json(new ApiResponse(200, populatedThread, "Comment thread is already open"))
+    }
 
     thread.status = "open"
+    thread.resolved = false
     thread.resolvedBy = null
     thread.resolvedAt = null
 

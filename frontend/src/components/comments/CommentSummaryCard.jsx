@@ -2,7 +2,7 @@ import React from 'react'
 import { MessageSquare } from 'lucide-react'
 
 const CommentSummaryCard = ({ thread, onClick }) => {
-    const isResolved = thread.status === 'resolved'
+    const isResolved = thread.resolved === true || thread.status === 'resolved'
     const commentsArray = Array.isArray(thread.comments) ? thread.comments : []
     const mainComment = commentsArray.length > 0 ? commentsArray[0] : null
     const replyCount = Math.max(commentsArray.length - 1, 0)
@@ -29,65 +29,77 @@ const CommentSummaryCard = ({ thread, onClick }) => {
 
     return (
         <div 
+            id={`comment-card-${thread.anchorId}`}
+            className={`comment-summary-card comment-card-animate ${isResolved ? 'is-resolved' : ''}`}
             onClick={onClick}
             style={{
                 border: '1px solid var(--border)',
                 borderRadius: '8px',
-                padding: '12px',
-                marginBottom: '8px',
+                padding: '16px',
+                marginBottom: '12px',
                 backgroundColor: 'var(--surface-color)',
                 cursor: 'pointer',
                 opacity: isResolved ? 0.6 : 1,
-                transition: 'background-color 0.2s ease, opacity 0.2s ease'
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-color)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--surface-color)' }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--bg-color)'
+                window.dispatchEvent(new CustomEvent('sidebar:comment-hover', { detail: { anchorId: thread.anchorId, isHovering: true } }))
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--surface-color)'
+                window.dispatchEvent(new CustomEvent('sidebar:comment-hover', { detail: { anchorId: thread.anchorId, isHovering: false } }))
+            }}
         >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {thread.isUnread && (
-                        <span style={{ width: '6px', height: '6px', backgroundColor: 'var(--danger, #ef4444)', borderRadius: '50%' }} aria-label="Unread" />
+                        <span style={{ width: '8px', height: '8px', backgroundColor: 'var(--amber)', borderRadius: '50%' }} aria-label="Unread" />
                     )}
                     {resolveAuthorName(mainComment || thread)}
                 </span>
-                <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: '500' }}>
                     {getRelativeTime(thread.createdAt)}
                 </span>
             </div>
 
             <div style={{
-                fontSize: '12px',
-                color: 'var(--muted)',
+                fontSize: '13px',
+                color: 'var(--muted-strong)',
                 fontStyle: 'italic',
-                borderLeft: '2px solid var(--border)',
-                paddingLeft: '8px',
-                marginBottom: '8px',
+                borderLeft: '2px solid var(--accent, #7c3aed)',
+                paddingLeft: '10px',
+                marginBottom: '10px',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis'
+                textOverflow: 'ellipsis',
+                backgroundColor: 'var(--skeleton-base)',
+                padding: '4px 8px',
+                borderRadius: '0 4px 4px 0'
             }}>
                 "{thread.selectedText || 'Unknown text'}"
             </div>
 
-            <p style={{ 
-                margin: '0 0 8px 0', 
-                fontSize: '13px', 
-                color: 'var(--text-color)',
+            <p style={{
+                margin: '0 0 12px 0',
+                fontSize: '14px',
+                color: 'var(--text)',
                 display: '-webkit-box',
-                WebkitLineClamp: 2,
+                WebkitLineClamp: 3,
                 WebkitBoxOrient: 'vertical',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                lineHeight: '1.5'
             }}>
                 {mainComment?.body || <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>No comment body</span>}
             </p>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--muted)', fontSize: '11px' }}>
-                    <MessageSquare size={12} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--muted-strong)', fontSize: '12px', fontWeight: '500' }}>
+                    <MessageSquare size={14} />
                     <span>{replyCount} {replyCount === 1 ? 'reply' : 'replies'}</span>
                 </div>
                 {isResolved && (
-                    <span style={{ fontSize: '10px', backgroundColor: 'var(--bg-color)', padding: '2px 6px', borderRadius: '4px', color: 'var(--muted)' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '600', backgroundColor: 'var(--skeleton-base)', padding: '2px 8px', borderRadius: '100px', color: 'var(--muted-strong)' }}>
                         Resolved
                     </span>
                 )}

@@ -1,0 +1,281 @@
+/* ==========================================================================
+   Responsive Architecture & Overrides
+   ========================================================================== */
+
+/* Utility: Mobile Backdrop */
+.mobile-only { display: none !important; }
+.desktop-only { display: block; }
+
+@media (max-width: 1023px) {
+    .mobile-only { display: flex !important; }
+    .desktop-only { display: none !important; }
+}
+
+.show-on-mobile { display: none !important; }
+@media (max-width: 767px) {
+    .hide-on-mobile { display: none !important; }
+    .show-on-mobile { display: flex !important; }
+}
+.mobile-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.95);
+    z-index: 900;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.mobile-backdrop.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Utility: Mobile Top Header */
+.mobile-top-header {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background-color: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 800;
+}
+
+.mobile-top-header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-color);
+}
+
+.mobile-menu-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+}
+.mobile-menu-btn:hover {
+    background-color: var(--skeleton-base);
+}
+
+/* --------------------------------------------------------------------------
+   Tablet & Mobile (< 1024px)
+   -------------------------------------------------------------------------- */
+@media (max-width: 1023px) {
+    /* Touch Targets */
+    .icon-button,
+    .dropdown-item,
+    .nav-item,
+    .mobile-menu-btn {
+        min-height: 44px;
+    }
+
+    /* Dashboard & Sidebar */
+    .mobile-top-header {
+        display: flex;
+    }
+
+    .app-shell {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 280px;
+        z-index: 1000;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: var(--shadow-md);
+    }
+    
+    .sidebar.mobile-open {
+        transform: translateX(0);
+    }
+
+    .dashboard-panel {
+        width: 100%;
+        padding: 16px;
+    }
+
+    /* Top Toolbar (Fixed layout to allow dropdowns) */
+    .editor-toolbar {
+        flex-wrap: nowrap !important;
+    }
+    
+    /* Formatting Toolbar */
+    .editor-formatting-toolbar {
+        max-width: 100%;
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; /* Firefox */
+    }
+    .editor-formatting-toolbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Note Editor Panels - Tablet Right Slide-Over */
+    .mobile-overlay-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 360px !important;
+        max-width: 90vw;
+        height: 100vh;
+        z-index: 1000;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: var(--shadow-sm);
+        border-left: 1px solid var(--border);
+        background: var(--surface) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+    
+    .modal-card {
+        background: var(--surface) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    .modal-overlay {
+        background: rgba(0, 0, 0, 0.95) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+    
+    .mobile-overlay-panel.panel-open {
+        transform: translateX(0);
+    }
+
+    /* Editor Shell and Grid Fixes */
+    .editor-shell {
+        overflow-x: hidden;
+        max-width: 100%;
+        width: 100%;
+    }
+
+    .editor-grid {
+        grid-template-columns: 1fr;
+        padding: 24px;
+        gap: 24px;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .document-surface {
+        max-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .ProseMirror {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        max-width: 100%;
+    }
+
+    /* Note Editor main canvas area */
+    .editor-main {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        max-width: 100% !important;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Mobile (< 768px)
+   -------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+    /* Dashboard Grid */
+    .editorial-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .featured-card {
+        margin-bottom: 16px;
+    }
+
+    .stacked-cards {
+        gap: 16px;
+    }
+
+    .dashboard-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .dashboard-search {
+        width: 100%;
+        max-width: none;
+    }
+
+    .editor-toolbar {
+        padding: 0 16px;
+        gap: 12px;
+    }
+
+    .editor-grid {
+        padding: 12px;
+        gap: 16px;
+    }
+
+    .document-surface {
+        padding: 16px;
+    }
+
+    .title-input {
+        font-size: 2rem;
+        margin-bottom: 4px;
+    }
+
+    /* Note Editor Panels - Mobile Full Screen Overlay */
+    .mobile-overlay-panel {
+        width: 100% !important;
+        max-width: 100vw;
+        border-left: none;
+    }
+
+    .mobile-overlay-panel .sidebar-header {
+        padding-top: 16px;
+    }
+
+    /* Close button for full screen panel header */
+    .mobile-panel-close-btn {
+        display: flex !important;
+        min-height: 44px;
+        min-width: 44px;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Editor Title Area */
+    .editor-title-input {
+        font-size: 28px;
+    }
+
+    /* Modals */
+    .modal-card {
+        width: 90vw !important;
+        max-height: 85vh;
+        overflow-y: auto;
+    }
+}
+

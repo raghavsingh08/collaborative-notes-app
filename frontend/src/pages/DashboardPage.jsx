@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
 import { AvatarStack, Badge, CollaboratorAvatarGroup, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
 import { IconChevronDown, IconNote, IconPlus, IconSearch, IconUsers, IconMoreHorizontal } from "../components/ui/Icons"
+import { Menu } from "lucide-react"
 import UserMenu from "../components/ui/UserMenu"
 import { formatDateTime, getInitials, getDisplayName } from "../components/ui/uiUtils"
 import usePageTitle from "../hooks/usePageTitle"
@@ -109,6 +110,7 @@ const DashboardPage = () => {
     const [activeDropdownNoteId, setActiveDropdownNoteId] = useState(null)
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState("")
+    const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
     const dropdownRef = useRef(null)
 
     useEffect(() => {
@@ -268,8 +270,23 @@ const DashboardPage = () => {
 
     return (
         <main className="app-shell">
+            {/* ── Mobile Top Header (hidden on desktop) ── */}
+            <header className="mobile-top-header">
+                <h1>{displayName}'s Workspace</h1>
+                <button className="mobile-menu-btn" onClick={() => setIsMobileNavOpen(true)} aria-label="Open menu">
+                    <Menu size={20} />
+                </button>
+            </header>
+
+            {/* ── Mobile Backdrop ── */}
+            <div 
+                className={`mobile-backdrop ${isMobileNavOpen ? 'visible' : ''}`} 
+                onClick={() => setIsMobileNavOpen(false)}
+                aria-hidden="true"
+            />
+
             {/* ── Sidebar ── */}
-            <aside className="sidebar">
+            <aside className={`sidebar ${isMobileNavOpen ? 'mobile-open' : ''}`}>
                 <div className="sidebar-workspace">
                     <UserMenu />
                     <div className="sidebar-workspace-info">
@@ -284,7 +301,7 @@ const DashboardPage = () => {
                 <div className="sidebar-new-action">
                     <button 
                         className="new-document-button" 
-                        onClick={handleCreateFirstNote}
+                        onClick={() => { handleCreateFirstNote(); setIsMobileNavOpen(false); }}
                     >
                         <span className="new-document-icon">
                             <IconPlus size={16} />
@@ -300,7 +317,7 @@ const DashboardPage = () => {
                     <button
                         className={`nav-item ${activeFilter === "all" ? "active" : ""}`}
                         type="button"
-                        onClick={() => setActiveFilter("all")}
+                        onClick={() => { setActiveFilter("all"); setIsMobileNavOpen(false); }}
                     >
                         <span className="nav-item-inner">
                             <IconNote size={14} />
@@ -311,7 +328,7 @@ const DashboardPage = () => {
                     <button
                         className={`nav-item ${activeFilter === "owned" ? "active" : ""}`}
                         type="button"
-                        onClick={() => setActiveFilter("owned")}
+                        onClick={() => { setActiveFilter("owned"); setIsMobileNavOpen(false); }}
                     >
                         <span className="nav-item-inner">
                             <IconNote size={14} />
@@ -322,7 +339,7 @@ const DashboardPage = () => {
                     <button
                         className={`nav-item ${activeFilter === "shared" ? "active" : ""}`}
                         type="button"
-                        onClick={() => setActiveFilter("shared")}
+                        onClick={() => { setActiveFilter("shared"); setIsMobileNavOpen(false); }}
                     >
                         <span className="nav-item-inner">
                             <IconUsers size={14} />

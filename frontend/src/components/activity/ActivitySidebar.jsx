@@ -32,7 +32,7 @@ const groupActivityEvents = (events) => {
     return grouped;
 };
 
-const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose }) => {
+const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose, isOpen }) => {
     const [events, setEvents] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -66,10 +66,11 @@ const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose }) => {
     }, [noteId, refreshTrigger])
 
     const groupedEvents = groupActivityEvents(events);
+    if (!isOpen) return null;
 
     return (
-        <aside className="collaboration-panel activity-sidebar" style={{ display: 'flex', flexDirection: 'column', width: '320px', backgroundColor: 'var(--surface-color)', borderLeft: '1px solid var(--border)', zIndex: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '16px 16px 0 16px' }}>
+        <aside className="collaboration-panel activity-sidebar desktop-panel mobile-overlay-panel panel-open" style={{ display: 'flex', flexDirection: 'column', width: '320px', backgroundColor: 'var(--surface-color)', borderLeft: '1px solid var(--border)', zIndex: 50 }}>
+            <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '16px 16px 0 16px' }}>
                 <div>
                     <p className="eyebrow">Timeline</p>
                     <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontSize: '16px' }}>
@@ -78,7 +79,7 @@ const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose }) => {
                     </h2>
                 </div>
                 <button 
-                    className="icon-button" 
+                    className="icon-button mobile-panel-close-btn" 
                     onClick={onClose}
                     title="Close"
                 >
@@ -109,7 +110,7 @@ const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose }) => {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: 'var(--surface)',
+                                backgroundColor: 'var(--surface-color)',
                                 border: '1px solid var(--border)',
                                 display: 'flex',
                                 alignItems: 'center',

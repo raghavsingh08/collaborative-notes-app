@@ -5,7 +5,7 @@ import CommentDiscussionView from './CommentDiscussionView'
 import { Plus, MessageSquare, X } from 'lucide-react'
 import socket from '../../api/socket'
 
-const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted }) => {
+const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted, isOpen, onClose }) => {
     const [threads, setThreads] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -244,9 +244,14 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
         : (normalizedSelection.length > 300 ? "Please select a shorter text (maximum 300 characters)." : "");
 
     return (
-        <aside className="collaboration-panel comments-sidebar" aria-label="Comments" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <div>
+        <aside className={`collaboration-panel comments-sidebar mobile-overlay-panel ${isOpen ? 'panel-open' : ''}`} aria-label="Comments" style={{ display: 'flex', flexDirection: 'column', zIndex: 50 }}>
+            <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {onClose && (
+                        <button className="icon-button mobile-panel-close-btn mobile-only" onClick={onClose} aria-label="Close panel" style={{ display: 'none', padding: '4px', marginLeft: '-4px' }}>
+                            <X size={18} />
+                        </button>
+                    )}
                     <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '600', margin: 0, color: 'var(--text)' }}>
                         <MessageSquare size={16} color="var(--muted-strong)" />
                         Comments

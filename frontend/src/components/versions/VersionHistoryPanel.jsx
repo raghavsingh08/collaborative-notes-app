@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { getNoteVersions, getNoteVersionById, restoreNoteVersion } from '../../api/notes.api'
 import { History, X, Eye, RotateCcw } from 'lucide-react'
 
-const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose }) => {
+const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
     const [versions, setVersions] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -81,10 +81,11 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose }) => {
         if (!user) return 'System'
         return user.name || user.username || user.email || 'Unknown User'
     }
+    if (!isOpen) return null;
 
     return (
-        <aside className="collaboration-panel version-history-sidebar" style={{ display: 'flex', flexDirection: 'column', width: '320px', backgroundColor: 'var(--surface-color)', borderLeft: '1px solid var(--border)', zIndex: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '16px 16px 0 16px' }}>
+        <aside className="collaboration-panel version-history-sidebar desktop-panel mobile-overlay-panel panel-open" style={{ display: 'flex', flexDirection: 'column', width: '320px', backgroundColor: 'var(--surface-color)', borderLeft: '1px solid var(--border)', zIndex: 50 }}>
+            <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '16px 16px 0 16px' }}>
                 <div>
                     <p className="eyebrow">History</p>
                     <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontSize: '16px' }}>
@@ -93,7 +94,7 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose }) => {
                     </h2>
                 </div>
                 <button 
-                    className="icon-button" 
+                    className="icon-button mobile-panel-close-btn" 
                     onClick={onClose}
                     title="Close"
                 >

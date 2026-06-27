@@ -21,7 +21,7 @@ import { CollaborationProvider, useCollaboration } from "../collaboration/Collab
 import CommentsSidebar from "../components/comments/CommentsSidebar"
 import VersionHistoryPanel from "../components/versions/VersionHistoryPanel"
 import ActivitySidebar from "../components/activity/ActivitySidebar"
-import { History, Activity } from "lucide-react"
+import { History, Activity, MessageSquare } from "lucide-react"
 
 const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onSelectionChange, onCommentClicked }) => {
     const { ydoc, awareness, syncStatus } = useCollaboration()
@@ -344,6 +344,9 @@ const NoteEditorV2Page = () => {
     const [isActivityOpen, setIsActivityOpen] = useState(false)
     const [activityRefreshTrigger, setActivityRefreshTrigger] = useState(0)
 
+    // Mobile Comments State
+    const [isCommentsOpen, setIsCommentsOpen] = useState(false)
+
     const hasLoadedNote = useRef(false)
     const editorMoreRef = useRef(null)
     const latestPayloadRef = useRef({ content: "", contentJson: null })
@@ -575,11 +578,26 @@ const NoteEditorV2Page = () => {
 
                     <div className="editor-toolbar-actions">
                         <button
-                            className="ghost-button collaboration-entry-button"
+                            className="ghost-button collaboration-entry-button mobile-only hide-on-mobile"
+                            type="button"
+                            onClick={() => {
+                                setIsCommentsOpen(true)
+                                setIsHistoryOpen(false)
+                                setIsActivityOpen(false)
+                            }}
+                            style={{ display: 'none' }} // overriden in CSS
+                        >
+                            <MessageSquare size={15} />
+                            <span className="desktop-label">Comments</span>
+                        </button>
+
+                        <button
+                            className="ghost-button collaboration-entry-button hide-on-mobile"
                             type="button"
                             onClick={() => {
                                 setIsHistoryOpen(true)
                                 setIsActivityOpen(false)
+                                setIsCommentsOpen(false)
                             }}
                         >
                             <History size={15} />
@@ -587,11 +605,12 @@ const NoteEditorV2Page = () => {
                         </button>
 
                         <button
-                            className="ghost-button collaboration-entry-button"
+                            className="ghost-button collaboration-entry-button hide-on-mobile"
                             type="button"
                             onClick={() => {
                                 setIsActivityOpen(true)
                                 setIsHistoryOpen(false)
+                                setIsCommentsOpen(false)
                             }}
                         >
                             <Activity size={15} />
@@ -599,7 +618,7 @@ const NoteEditorV2Page = () => {
                         </button>
                         
                         <button
-                            className="ghost-button collaboration-entry-button"
+                            className="ghost-button collaboration-entry-button hide-on-mobile"
                             type="button"
                             onClick={() => setIsShareOpen(true)}
                         >
@@ -630,6 +649,61 @@ const NoteEditorV2Page = () => {
                             </button>
                             {isEditorMoreOpen && (
                                 <div className="editor-more-menu" role="menu">
+                                    <button
+                                        className="show-on-mobile"
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                            setIsEditorMoreOpen(false)
+                                            setIsCommentsOpen(true)
+                                            setIsHistoryOpen(false)
+                                            setIsActivityOpen(false)
+                                        }}
+                                    >
+                                        <MessageSquare size={14} />
+                                        Comments
+                                    </button>
+                                    <button
+                                        className="show-on-mobile"
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                            setIsEditorMoreOpen(false)
+                                            setIsHistoryOpen(true)
+                                            setIsActivityOpen(false)
+                                            setIsCommentsOpen(false)
+                                        }}
+                                    >
+                                        <History size={14} />
+                                        History
+                                    </button>
+                                    <button
+                                        className="show-on-mobile"
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                            setIsEditorMoreOpen(false)
+                                            setIsActivityOpen(true)
+                                            setIsHistoryOpen(false)
+                                            setIsCommentsOpen(false)
+                                        }}
+                                    >
+                                        <Activity size={14} />
+                                        Activity
+                                    </button>
+                                    <button
+                                        className="show-on-mobile"
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                            setIsEditorMoreOpen(false)
+                                            setIsShareOpen(true)
+                                        }}
+                                    >
+                                        <IconUsers size={14} />
+                                        Share
+                                    </button>
+                                    <div className="menu-separator show-on-mobile" aria-hidden="true" />
                                     <button
                                         type="button"
                                         role="menuitem"
@@ -706,6 +780,18 @@ const NoteEditorV2Page = () => {
                         />
                     </section>
 
+                    {/* Mobile Backdrop for Sidebars */}
+                    <div 
+                        className={`mobile-backdrop ${(isCommentsOpen || isHistoryOpen || isActivityOpen) ? 'visible' : ''}`} 
+                        onClick={() => {
+                            setIsCommentsOpen(false)
+                            setIsHistoryOpen(false)
+                            setIsActivityOpen(false)
+                        }}
+                        aria-hidden="true"
+                        style={{ zIndex: 40 }}
+                    />
+
                     {!isHistoryOpen && !isActivityOpen && (
                         <CommentsSidebar 
                             noteId={noteId} 
@@ -729,6 +815,8 @@ const NoteEditorV2Page = () => {
                                     editorRef.current.unsetCommentMark(anchorId)
                                 }
                             }}
+                            isOpen={isCommentsOpen}
+                            onClose={() => setIsCommentsOpen(false)}
                         />
                     )}
 
@@ -736,7 +824,8 @@ const NoteEditorV2Page = () => {
                         <VersionHistoryPanel 
                             noteId={noteId}
                             refreshTrigger={historyRefreshTrigger} 
-                            onClose={() => setIsHistoryOpen(false)} 
+                            onClose={() => setIsHistoryOpen(false)}
+                            isOpen={true}
                         />
                     )}
 
@@ -746,6 +835,7 @@ const NoteEditorV2Page = () => {
                             currentUser={user}
                             refreshTrigger={activityRefreshTrigger}
                             onClose={() => setIsActivityOpen(false)}
+                            isOpen={true}
                         />
                     )}
                 </div>

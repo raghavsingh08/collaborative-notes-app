@@ -347,6 +347,15 @@ const NoteEditorV2Page = () => {
     // Mobile Comments State
     const [isCommentsOpen, setIsCommentsOpen] = useState(false)
 
+    // Layout tracking for backdrop
+    const [useOverlay, setUseOverlay] = useState(window.innerWidth < 1023)
+
+    useEffect(() => {
+        const handleResize = () => setUseOverlay(window.innerWidth < 1023)
+        window.addEventListener('resize', handleResize)
+        return () => window.removeEventListener('resize', handleResize)
+    }, [])
+
     const hasLoadedNote = useRef(false)
     const editorMoreRef = useRef(null)
     const latestPayloadRef = useRef({ content: "", contentJson: null })
@@ -769,16 +778,18 @@ const NoteEditorV2Page = () => {
                     </section>
 
                     {/* Mobile Backdrop for Sidebars */}
-                    <div 
-                        className={`mobile-backdrop ${(isCommentsOpen || isHistoryOpen || isActivityOpen) ? 'visible' : ''}`} 
-                        onClick={() => {
-                            setIsCommentsOpen(false)
-                            setIsHistoryOpen(false)
-                            setIsActivityOpen(false)
-                        }}
-                        aria-hidden="true"
-                        style={{ zIndex: 40 }}
-                    />
+                    {(isCommentsOpen || (useOverlay && (isHistoryOpen || isActivityOpen))) && (
+                        <div 
+                            className={`mobile-backdrop ${(isCommentsOpen || isHistoryOpen || isActivityOpen) ? 'visible' : ''}`} 
+                            onClick={() => {
+                                setIsCommentsOpen(false)
+                                setIsHistoryOpen(false)
+                                setIsActivityOpen(false)
+                            }}
+                            aria-hidden="true"
+                            style={{ zIndex: 40 }}
+                        />
+                    )}
 
                     {!isHistoryOpen && !isActivityOpen && (
                         <CommentsSidebar 

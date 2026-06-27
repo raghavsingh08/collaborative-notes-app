@@ -1001,11 +1001,15 @@ textarea:focus {
     position: relative;
     z-index: 1;
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 1.7fr 1fr;
     gap: 20px;
 }
 
-@media (max-width: 1024px) {
+.editorial-grid > * {
+    min-width: 0;
+}
+
+@media (max-width: 1022px) {
     .editorial-grid {
         grid-template-columns: 1fr;
     }
@@ -1065,6 +1069,8 @@ textarea:focus {
     font-weight: 700;
     letter-spacing: -0.01em;
     color: var(--text);
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .featured-card-preview {
@@ -1072,6 +1078,12 @@ textarea:focus {
     line-height: 1.6;
     color: var(--muted-strong);
     margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .mock-text-preview {
@@ -1184,6 +1196,8 @@ textarea:focus {
     cursor: pointer;
     transition: all var(--t-base);
     position: relative;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .compact-card:hover,
@@ -1198,6 +1212,7 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: 16px;
+    min-width: 0;
 }
 
 .compact-card-icon {
@@ -1222,6 +1237,7 @@ textarea:focus {
     flex-direction: column;
     gap: 4px;
     min-width: 0;
+    overflow: hidden;
 }
 
 .compact-card-title {
@@ -1231,6 +1247,8 @@ textarea:focus {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .compact-card-preview {
@@ -1239,6 +1257,8 @@ textarea:focus {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .compact-card-meta {
@@ -3333,7 +3353,7 @@ textarea:focus {
 /* ─────────────────────────────────────────────
    RESPONSIVE — 960px
 ───────────────────────────────────────────── */
-@media (max-width: 960px) {
+@media (max-width: 1022px) {
     .app-shell {
         grid-template-columns: 1fr;
     }
@@ -4037,7 +4057,7 @@ textarea:focus {
 .mobile-only { display: none !important; }
 .desktop-only { display: block; }
 
-@media (max-width: 1023px) {
+@media (max-width: 1022px) {
     .mobile-only { display: flex !important; }
     .desktop-only { display: none !important; }
 }
@@ -4111,7 +4131,7 @@ textarea:focus {
 /* --------------------------------------------------------------------------
    Tablet & Mobile (< 1024px)
    -------------------------------------------------------------------------- */
-@media (max-width: 1023px) {
+@media (max-width: 1022px) {
     /* Touch Targets */
     .icon-button,
     .dropdown-item,

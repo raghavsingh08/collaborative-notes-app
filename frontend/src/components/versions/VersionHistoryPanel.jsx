@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { getNoteVersions, getNoteVersionById, restoreNoteVersion } from '../../api/notes.api'
 import { History, X, Eye, RotateCcw } from 'lucide-react'
+import { renderVersionPreview, unwrapVersionResponse } from '../../utils/versionPreview'
 
 const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
     const [versions, setVersions] = useState([])
@@ -44,8 +45,13 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
             setPreviewingVersion(version)
             setIsPreviewLoading(true)
             const res = await getNoteVersionById(noteId, version._id)
-            const data = res.data?.version || res.data?.data?.version || res.data
-            setPreviewContent(data.content || '<p>No content</p>')
+            const snapshot = unwrapVersionResponse(res)
+
+            if (!snapshot?._id) {
+                throw new Error('Version detail response did not contain a snapshot')
+            }
+
+            setPreviewContent(renderVersionPreview(snapshot))
         } catch (err) {
             console.error("Failed to load preview:", err)
             alert("Failed to load preview.")
@@ -75,6 +81,11 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
 
     const formatTime = (dateString) => {
         return new Date(dateString).toLocaleString()
+    }
+
+    const formatReason = (reason) => {
+        if (reason === 'manual_save') return 'Save'
+        return reason || 'Version'
     }
 
     const getAuthorName = (user) => {
@@ -122,7 +133,7 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                             <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-color)' }}>
-                                {v.reason || 'Version'}
+                                {formatReason(v.reason)}
                             </div>
                             <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
                                 {formatTime(v.createdAt)}
@@ -156,20 +167,20 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
 
             {/* Preview Modal */}
             {previewingVersion && (
-                <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
-                    <div className="modal-card" style={{ width: '100%', maxWidth: '800px', height: '100%', maxHeight: '80vh', backgroundColor: 'var(--bg-color)', padding: '24px', borderRadius: '12px', boxShadow: '0 20px 40px rgba(0,0,0,0.4)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+                <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="modal-card" style={{ width: 'min(900px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 48px)', backgroundColor: 'var(--surface)', borderRadius: '12px', boxShadow: '0 24px 48px rgba(0,0,0,0.5)', border: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-                            <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', backgroundColor: 'var(--surface-soft)', borderBottom: '1px solid var(--border)', padding: '20px 24px' }}>
+                            <div style={{ flex: 1, minWidth: '200px' }}>
                                 <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <Eye size={20} color="var(--accent)" />
                                     Preview Only - Read Only
                                 </h3>
-                                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--muted)' }}>
-                                    {previewingVersion.reason} • {formatTime(previewingVersion.createdAt)}
+                                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--muted)', overflowWrap: 'anywhere' }}>
+                                    {formatReason(previewingVersion.reason)} • {formatTime(previewingVersion.createdAt)}
                                 </p>
                             </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                 <button 
                                     className="primary-button"
                                     style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -187,7 +198,7 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
                             </div>
                         </div>
 
-                        <div className="ProseMirror" style={{ flex: 1, overflowY: 'auto', padding: '16px', backgroundColor: 'var(--surface-color)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <div className="ProseMirror" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-word', padding: '24px', backgroundColor: 'var(--surface)' }}>
                             {isPreviewLoading ? (
                                 <p style={{ color: 'var(--muted)' }}>Loading snapshot...</p>
                             ) : (

@@ -1945,7 +1945,7 @@ textarea:focus {
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 .active-collaborator-avatar {
@@ -4043,10 +4043,18 @@ textarea:focus {
 }
 
 .show-on-mobile { display: none !important; }
+.show-on-medium { display: none !important; }
+
+@media (max-width: 1199px) {
+    .hide-on-medium { display: none !important; }
+    .show-on-medium { display: flex !important; }
+}
+
 @media (max-width: 767px) {
     .hide-on-mobile { display: none !important; }
     .show-on-mobile { display: flex !important; }
 }
+
 .mobile-backdrop {
     position: fixed;
     top: 0;
@@ -4199,6 +4207,8 @@ textarea:focus {
         overflow-x: hidden;
         max-width: 100%;
         width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
     }
 
     .editor-grid {
@@ -4207,19 +4217,39 @@ textarea:focus {
         gap: 24px;
         width: 100%;
         max-width: 100%;
+        min-width: 0;
         box-sizing: border-box;
     }
 
     .document-surface {
         max-width: 100%;
         width: 100%;
+        min-width: 0;
         box-sizing: border-box;
     }
 
     .ProseMirror {
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
+        word-break: break-word;
+        white-space: pre-wrap;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .ProseMirror * {
+        overflow-wrap: break-word;
         word-break: break-word;
         max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .content-editor {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
     }
 
     /* Note Editor main canvas area */
@@ -4227,6 +4257,8 @@ textarea:focus {
         width: 100% !important;
         flex: 1 1 100% !important;
         max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
     }
 }
 

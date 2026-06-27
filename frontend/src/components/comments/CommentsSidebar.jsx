@@ -244,7 +244,7 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
         : (normalizedSelection.length > 300 ? "Please select a shorter text (maximum 300 characters)." : "");
 
     return (
-        <aside className={`collaboration-panel comments-sidebar mobile-overlay-panel ${isOpen ? 'panel-open' : ''}`} aria-label="Comments" style={{ display: 'flex', flexDirection: 'column', zIndex: 50 }}>
+        <aside className={`collaboration-panel comments-sidebar mobile-overlay-panel ${isOpen ? 'panel-open' : ''}`} aria-label="Comments" style={{ display: 'flex', flexDirection: 'column' }}>
             <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {onClose && (

@@ -69,7 +69,7 @@ const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose, isOpen 
     if (!isOpen) return null;
 
     return (
-        <aside className="collaboration-panel activity-sidebar desktop-panel mobile-overlay-panel panel-open" style={{ display: 'flex', flexDirection: 'column', width: '320px', backgroundColor: 'var(--surface-color)', borderLeft: '1px solid var(--border)', zIndex: 50 }}>
+        <aside className="collaboration-panel activity-sidebar desktop-panel mobile-overlay-panel panel-open" style={{ display: 'flex', flexDirection: 'column', width: '320px', backgroundColor: 'var(--surface-color)', borderLeft: '1px solid var(--border)' }}>
             <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '16px 16px 0 16px' }}>
                 <div>
                     <p className="eyebrow">Timeline</p>

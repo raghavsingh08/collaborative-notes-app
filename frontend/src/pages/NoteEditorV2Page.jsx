@@ -577,22 +577,10 @@ const NoteEditorV2Page = () => {
                     </div>
 
                     <div className="editor-toolbar-actions">
-                        <button
-                            className="ghost-button collaboration-entry-button mobile-only hide-on-mobile"
-                            type="button"
-                            onClick={() => {
-                                setIsCommentsOpen(true)
-                                setIsHistoryOpen(false)
-                                setIsActivityOpen(false)
-                            }}
-                            style={{ display: 'none' }} // overriden in CSS
-                        >
-                            <MessageSquare size={15} />
-                            <span className="desktop-label">Comments</span>
-                        </button>
+                        {/* Comments button removed from main header, moved permanently to More menu */}
 
                         <button
-                            className="ghost-button collaboration-entry-button hide-on-mobile"
+                            className="ghost-button collaboration-entry-button hide-on-medium"
                             type="button"
                             onClick={() => {
                                 setIsHistoryOpen(true)
@@ -605,7 +593,7 @@ const NoteEditorV2Page = () => {
                         </button>
 
                         <button
-                            className="ghost-button collaboration-entry-button hide-on-mobile"
+                            className="ghost-button collaboration-entry-button hide-on-medium"
                             type="button"
                             onClick={() => {
                                 setIsActivityOpen(true)
@@ -618,7 +606,7 @@ const NoteEditorV2Page = () => {
                         </button>
                         
                         <button
-                            className="ghost-button collaboration-entry-button hide-on-mobile"
+                            className="ghost-button collaboration-entry-button hide-on-medium"
                             type="button"
                             onClick={() => setIsShareOpen(true)}
                         >
@@ -650,7 +638,7 @@ const NoteEditorV2Page = () => {
                             {isEditorMoreOpen && (
                                 <div className="editor-more-menu" role="menu">
                                     <button
-                                        className="show-on-mobile"
+                                        className="show-on-medium"
                                         type="button"
                                         role="menuitem"
                                         onClick={() => {
@@ -664,7 +652,7 @@ const NoteEditorV2Page = () => {
                                         Comments
                                     </button>
                                     <button
-                                        className="show-on-mobile"
+                                        className="show-on-medium"
                                         type="button"
                                         role="menuitem"
                                         onClick={() => {
@@ -678,7 +666,7 @@ const NoteEditorV2Page = () => {
                                         History
                                     </button>
                                     <button
-                                        className="show-on-mobile"
+                                        className="show-on-medium"
                                         type="button"
                                         role="menuitem"
                                         onClick={() => {
@@ -692,7 +680,7 @@ const NoteEditorV2Page = () => {
                                         Activity
                                     </button>
                                     <button
-                                        className="show-on-mobile"
+                                        className="show-on-medium"
                                         type="button"
                                         role="menuitem"
                                         onClick={() => {
@@ -703,7 +691,7 @@ const NoteEditorV2Page = () => {
                                         <IconUsers size={14} />
                                         Share
                                     </button>
-                                    <div className="menu-separator show-on-mobile" aria-hidden="true" />
+                                    <div className="menu-separator show-on-medium" aria-hidden="true" />
                                     <button
                                         type="button"
                                         role="menuitem"

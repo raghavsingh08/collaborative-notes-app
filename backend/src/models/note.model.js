@@ -21,6 +21,15 @@ const noteSchema = new mongoose.Schema(
             enum: ["v1", "v2"],
             default: "v1"
         },
+        contentRevision: {
+            type: Number,
+            default: 0,
+            min: [0, "Content revision cannot be negative"],
+            validate: {
+                validator: Number.isInteger,
+                message: "Content revision must be an integer"
+            }
+        },
         yjsState: {
             type: Buffer,
             default: null

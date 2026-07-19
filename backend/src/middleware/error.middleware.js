@@ -5,7 +5,11 @@ const errorHandler = (err, req, res, next) => {
         success: false,
         statusCode,
         message: err.message || "Internal Server Error",
-        errors: err.errors || []
+        errors: err.errors || [],
+        ...(err.code ? { code: err.code } : {}),
+        ...(err.currentContentRevision !== undefined
+            ? { currentContentRevision: err.currentContentRevision }
+            : {})
     })
 }
 

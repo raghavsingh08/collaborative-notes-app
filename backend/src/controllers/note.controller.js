@@ -3,6 +3,7 @@ import Note from "../models/note.model.js"
 import User from "../models/user.model.js"
 import { logActivity } from "../utils/activityLogger.js"
 import { createNoteVersionSnapshot } from "../utils/noteVersionSnapshots.js"
+import { emitNoteTitleUpdated } from "../sockets/socketState.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
@@ -14,6 +15,40 @@ const getAccessibleNoteQuery = (noteId, userId) => ({
         { sharedWith: userId }
     ]
 })
+
+const normalizeContentRevision = (value) => (
+    Number.isInteger(value) && value >= 0 ? value : 0
+)
+
+const normalizeNoteContentRevision = (note) => {
+    if (note) {
+        note.contentRevision = normalizeContentRevision(note.contentRevision)
+    }
+
+    return note
+}
+
+const getContentRevisionMatch = (expectedContentRevision) => (
+    expectedContentRevision === 0
+        ? {
+            $or: [
+                { contentRevision: 0 },
+                { contentRevision: { $exists: false } }
+            ]
+        }
+        : { contentRevision: expectedContentRevision }
+)
+
+const createContentRevisionConflictError = (currentContentRevision) => {
+    const error = new ApiError(
+        409,
+        "The document content changed since this save was based on it."
+    )
+
+    error.code = "CONTENT_REVISION_CONFLICT"
+    error.currentContentRevision = normalizeContentRevision(currentContentRevision)
+    return error
+}
 
 const getDisplayName = (user) => {
     return user?.name || user?.username || user?.email || ""
@@ -52,7 +87,7 @@ const createNote = asyncHandler(async (req, res) => {
 
     return res
         .status(201)
-        .json(new ApiResponse(201, note, "Note created successfully"))
+        .json(new ApiResponse(201, normalizeNoteContentRevision(note), "Note created successfully"))
 })
 
 const getAllNotes = asyncHandler(async (req, res) => {
@@ -64,6 +99,8 @@ const getAllNotes = asyncHandler(async (req, res) => {
     }).sort({ updatedAt: -1 })
       .populate("owner", "username email name")
       .populate("sharedWith", "username email name")
+
+    notes.forEach(normalizeNoteContentRevision)
 
     return res
         .status(200)
@@ -85,6 +122,8 @@ const getNoteById = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Note not found")
     }
 
+    normalizeNoteContentRevision(note)
+
     return res
         .status(200)
         .json(new ApiResponse(200, note, "Note fetched successfully"))
@@ -92,7 +131,14 @@ const getNoteById = asyncHandler(async (req, res) => {
 
 const updateNote = asyncHandler(async (req, res) => {
     const { noteId } = req.params
-    const { title, content, contentJson, editorVersion, saveType } = req.body
+    const {
+        title,
+        content,
+        contentJson,
+        editorVersion,
+        expectedContentRevision,
+        saveType
+    } = req.body
 
     if (!mongoose.isValidObjectId(noteId)) {
         throw new ApiError(400, "Invalid note id")
@@ -104,35 +150,55 @@ const updateNote = asyncHandler(async (req, res) => {
 
     const updates = {}
 
-    if (title !== undefined) {
-        updates.title = title.trim()
-    }
-
-    if (content !== undefined) {
-        updates.content = content
-    }
-
-    if (contentJson !== undefined) {
-        updates.contentJson = contentJson
-    }
-
-    if (editorVersion !== undefined) {
-        updates.editorVersion = editorVersion
-    }
+    if (title !== undefined) updates.title = title.trim()
+    if (content !== undefined) updates.content = content
+    if (contentJson !== undefined) updates.contentJson = contentJson
+    if (editorVersion !== undefined) updates.editorVersion = editorVersion
 
     if (Object.keys(updates).length === 0) {
         throw new ApiError(400, "No update fields provided")
     }
 
-    const previousNote = title !== undefined
-        ? await Note.findOne(getAccessibleNoteQuery(noteId, req.user._id)).select("title")
-        : null
+    const hasContentProjectionFields = (
+        content !== undefined ||
+        contentJson !== undefined ||
+        editorVersion !== undefined
+    )
+
+    const accessibleNote = await Note.findOne(
+        getAccessibleNoteQuery(noteId, req.user._id)
+    ).select("title contentRevision editorVersion")
+
+    if (!accessibleNote) {
+        throw new ApiError(404, "Note not found")
+    }
+
+    const isV2ContentProjectionUpdate = hasContentProjectionFields && (
+        editorVersion === "v2" || accessibleNote.editorVersion === "v2"
+    )
+
+    if (isV2ContentProjectionUpdate && (
+        !Number.isInteger(expectedContentRevision) || expectedContentRevision < 0
+    )) {
+        throw new ApiError(400, "expectedContentRevision must be a non-negative integer")
+    }
+
+    const previousNote = title !== undefined ? accessibleNote : null
+    const updateFilter = isV2ContentProjectionUpdate
+        ? {
+            ...getAccessibleNoteQuery(noteId, req.user._id),
+            $and: [getContentRevisionMatch(expectedContentRevision)]
+        }
+        : getAccessibleNoteQuery(noteId, req.user._id)
 
     const note = await Note.findOneAndUpdate(
-        getAccessibleNoteQuery(noteId, req.user._id),
-        {
-            $set: updates
-        },
+        updateFilter,
+        isV2ContentProjectionUpdate
+            ? {
+                $set: updates,
+                $inc: { contentRevision: 1 }
+            }
+            : { $set: updates },
         {
             returnDocument: "after",
             runValidators: true
@@ -140,10 +206,33 @@ const updateNote = asyncHandler(async (req, res) => {
     )
 
     if (!note) {
+        if (isV2ContentProjectionUpdate) {
+            const currentNote = await Note.findOne(
+                getAccessibleNoteQuery(noteId, req.user._id)
+            ).select("contentRevision")
+
+            if (currentNote) {
+                throw createContentRevisionConflictError(currentNote.contentRevision)
+            }
+        }
+
         throw new ApiError(404, "Note not found")
     }
 
-    if (previousNote && title !== undefined && previousNote.title !== note.title) {
+    normalizeNoteContentRevision(note)
+
+    const didTitleChange = Boolean(
+        previousNote && title !== undefined && previousNote.title !== note.title
+    )
+
+    if (didTitleChange) {
+        emitNoteTitleUpdated({
+            noteId: note._id,
+            title: note.title,
+            updatedBy: req.user,
+            updatedAt: note.updatedAt
+        })
+
         await recordActivity({
             noteId: note._id,
             actor: req.user,
@@ -177,7 +266,6 @@ const updateNote = asyncHandler(async (req, res) => {
         .status(200)
         .json(new ApiResponse(200, note, "Note updated successfully"))
 })
-
 const deleteNote = asyncHandler(async (req, res) => {
     const { noteId } = req.params
 

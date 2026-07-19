@@ -57,6 +57,92 @@ const saveStatusClassMap = {
     "Save failed": "save-failed"
 }
 
+const TITLE_AUTOSAVE_DELAY_MS = 750
+const CONTENT_AUTOSAVE_DELAY_MS = 1000
+const MAX_CONTENT_RECOVERY_ATTEMPTS = 3
+
+const getContentRecoveryDelay = (attempt) => {
+    if (attempt <= 1) return 0
+
+    const baseDelay = attempt === 2 ? 150 : 350
+    const jitter = attempt === 2
+        ? Math.floor(Math.random() * 51)
+        : Math.floor(Math.random() * 151)
+
+    return baseDelay + jitter
+}
+
+const normalizeTitle = (value = "") => String(value || "").trim()
+
+const normalizeContentRevision = (value) => (
+    Number.isInteger(value) && value >= 0 ? value : 0
+)
+
+const getContentRevisionConflict = (error) => {
+    const response = error?.response?.data
+    const currentContentRevision = response?.currentContentRevision
+
+    if (
+        error?.response?.status !== 409 ||
+        response?.code !== "CONTENT_REVISION_CONFLICT" ||
+        !Number.isInteger(currentContentRevision) ||
+        currentContentRevision < 0
+    ) {
+        return null
+    }
+
+    return { currentContentRevision }
+}
+
+const stableSerialize = (value) => {
+    if (value === undefined || value === null) return "null"
+    if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`
+    if (typeof value === "object") {
+        return `{${Object.keys(value).sort().map((key) => (
+            `${JSON.stringify(key)}:${stableSerialize(value[key])}`
+        )).join(",")}}`
+    }
+    return JSON.stringify(value)
+}
+
+const serializeContentJson = (value) => {
+    try {
+        return stableSerialize(value ?? null)
+    } catch {
+        return ""
+    }
+}
+
+const createContentSnapshot = ({ noteId, content = "", contentJson = null, saveType = "autosave", sequence = 0, generation = 0, title = "" }) => {
+    const normalizedContent = String(content ?? "")
+    const contentJsonKey = serializeContentJson(contentJson)
+
+    return {
+        noteId: String(noteId || ""),
+        content: normalizedContent,
+        contentJson: contentJson ?? null,
+        contentKey: `${JSON.stringify(normalizedContent)}:${contentJsonKey}`,
+        contentJsonSignature: contentJsonKey,
+        saveType,
+        sequence,
+        generation,
+        title
+    }
+}
+
+const getCombinedSaveStatus = ({
+    isTitleSaving,
+    isContentSaving,
+    isTitleError,
+    isContentError,
+    isTitleDirty,
+    isContentDirty
+}) => {
+    if (isTitleSaving || isContentSaving) return "Saving..."
+    if (isTitleError || isContentError) return "Save failed"
+    if (isTitleDirty || isContentDirty) return "Unsaved changes"
+    return "Saved"
+}
 const getId = (user) => user?._id || user?.id || user
 
 const deduplicateUsers = (users = []) => {
@@ -319,12 +405,18 @@ const NoteEditorV2Page = () => {
     const [title, setTitle] = useState("")
     const [content, setContent] = useState("")
     const [contentJson, setContentJson] = useState(null)
-    const [lastActivity, setLastActivity] = useState(0)
+    const [contentLastActivity, setContentLastActivity] = useState(0)
     const [noteOwner, setNoteOwner] = useState(null)
     const [noteCollaborators, setNoteCollaborators] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
-    const [saveStatus, setSaveStatus] = useState("Saved")
+    const [isNavigatingAfterFlush, setIsNavigatingAfterFlush] = useState(false)
+    const [isTitleDirty, setIsTitleDirty] = useState(false)
+    const [isTitleSaving, setIsTitleSaving] = useState(false)
+    const [isTitleError, setIsTitleError] = useState(false)
+    const [isContentDirty, setIsContentDirty] = useState(false)
+    const [isContentSaving, setIsContentSaving] = useState(false)
+    const [isContentError, setIsContentError] = useState(false)
     const [error, setError] = useState("")
     const [loadError, setLoadError] = useState(false)
     const [isShareOpen, setIsShareOpen] = useState(false)
@@ -359,6 +451,47 @@ const NoteEditorV2Page = () => {
     const hasLoadedNote = useRef(false)
     const editorMoreRef = useRef(null)
     const latestPayloadRef = useRef({ content: "", contentJson: null })
+    const latestContentDraftRef = useRef(null)
+    const confirmedContentSnapshotRef = useRef(null)
+    const confirmedContentRevisionRef = useRef({
+        noteId: "",
+        generation: 0,
+        revision: 0
+    })
+    const contentConflictRef = useRef(null)
+    const contentErrorRef = useRef("")
+    const contentSaveControllerRef = useRef({
+        active: false,
+        activeSnapshot: null,
+        pendingSnapshot: null,
+        sequence: 0,
+        generation: 0,
+        halted: false,
+        recoveryAttempts: 0,
+        recoveryTimer: null,
+        idleWaiters: new Set()
+    })
+    const titleRef = useRef(title)
+    const noteIdRef = useRef(noteId)
+    const isMountedRef = useRef(false)
+    const titleAutosaveTimerRef = useRef(null)
+    const contentAutosaveTimerRef = useRef(null)
+    const navigationFlushPromiseRef = useRef(null)
+    const lifecycleFlushRef = useRef({
+        noteId: "",
+        generation: 0,
+        title: null,
+        contentKey: null
+    })
+    const titleProcessingPromiseRef = useRef(null)
+    const titleSaveQueueRef = useRef({
+        pendingByNoteId: new Map(),
+        activeByNoteId: new Map(),
+        confirmedByNoteId: new Map(),
+        remoteConfirmedByNoteId: new Map(),
+        failedByNoteId: new Map(),
+        requestSeq: 0
+    })
 
     const currentUserId = getUserIdStr(user)
     const ownerId = getUserIdStr(noteOwner)
@@ -368,11 +501,315 @@ const NoteEditorV2Page = () => {
 
     const { socketError, isConnected, isReconnecting } = useNoteSocketV2(noteId)
 
+    const saveStatus = getCombinedSaveStatus({
+        isTitleSaving,
+        isContentSaving,
+        isTitleError,
+        isContentError,
+        isTitleDirty,
+        isContentDirty
+    })
+
     const sortedActiveUsers = []
     const uniqueTypingUsers = []
     const uniqueCollaborators = useMemo(() => deduplicateUsers(noteCollaborators), [noteCollaborators])
 
+    const clearTitleAutosaveTimer = useCallback(() => {
+        if (titleAutosaveTimerRef.current) {
+            clearTimeout(titleAutosaveTimerRef.current)
+            titleAutosaveTimerRef.current = null
+        }
+    }, [])
+
+    const clearContentAutosaveTimer = useCallback(() => {
+        if (contentAutosaveTimerRef.current) {
+            clearTimeout(contentAutosaveTimerRef.current)
+            contentAutosaveTimerRef.current = null
+        }
+    }, [])
+
+    const isTitleCoveredByManualContentSave = useCallback((targetNoteId, nextTitle) => {
+        const targetKey = String(targetNoteId)
+        const normalizedTitle = normalizeTitle(nextTitle)
+        const controller = contentSaveControllerRef.current
+
+        return [controller.pendingSnapshot, controller.activeSnapshot].some((snapshot) => (
+            snapshot?.saveType === "manual" &&
+            String(snapshot.noteId) === targetKey &&
+            normalizeTitle(snapshot.title) === normalizedTitle
+        ))
+    }, [])
+
+    const processTitleSaveQueue = useCallback(() => {
+        if (titleProcessingPromiseRef.current) {
+            return titleProcessingPromiseRef.current
+        }
+
+        const run = async () => {
+            const queue = titleSaveQueueRef.current
+
+            while (queue.pendingByNoteId.size > 0) {
+                const preferredNoteId = String(noteIdRef.current || "")
+                const nextEntry = queue.pendingByNoteId.has(preferredNoteId)
+                    ? [preferredNoteId, queue.pendingByNoteId.get(preferredNoteId)]
+                    : queue.pendingByNoteId.entries().next().value
+
+                if (!nextEntry) break
+
+                const [targetNoteId, pending] = nextEntry
+                queue.pendingByNoteId.delete(targetNoteId)
+
+                const titleToSave = pending?.title ?? ""
+                const normalizedTitle = normalizeTitle(titleToSave)
+                const lastConfirmedTitle = queue.confirmedByNoteId.get(targetNoteId) ?? ""
+
+                if (normalizedTitle === lastConfirmedTitle) {
+                    if (isMountedRef.current && String(noteIdRef.current) === String(targetNoteId)) {
+                        setIsTitleDirty(false)
+                        setIsTitleError(false)
+                    }
+                    continue
+                }
+
+                const requestSeq = ++queue.requestSeq
+                queue.activeByNoteId.set(targetNoteId, {
+                    title: titleToSave,
+                    requestSeq
+                })
+
+                const shouldUpdateCurrentState = () => (
+                    isMountedRef.current &&
+                    String(noteIdRef.current) === String(targetNoteId) &&
+                    pending?.allowState !== false
+                )
+
+                if (shouldUpdateCurrentState()) {
+                    setIsTitleSaving(true)
+                    setIsTitleError(false)
+                }
+
+                try {
+                    const response = await updateNote(targetNoteId, { title: titleToSave })
+                    const savedNote = getNoteFromResponse(response)
+                    const confirmedTitle = normalizeTitle(savedNote?.title ?? titleToSave)
+                    const isLatestRequest = requestSeq === queue.requestSeq
+
+                    queue.confirmedByNoteId.set(targetNoteId, confirmedTitle)
+                    queue.remoteConfirmedByNoteId.delete(targetNoteId)
+                    queue.failedByNoteId.delete(targetNoteId)
+
+                    if (shouldUpdateCurrentState() && isLatestRequest) {
+                        const latestTitle = normalizeTitle(titleRef.current)
+                        const hasPendingTitle = queue.pendingByNoteId.has(targetNoteId)
+
+                        setIsTitleDirty(latestTitle !== confirmedTitle || hasPendingTitle)
+                        setIsTitleError(false)
+                    }
+                } catch {
+                    queue.failedByNoteId.set(targetNoteId, true)
+
+                    if (shouldUpdateCurrentState()) {
+                        setError("Unable to save note.")
+                        setIsTitleError(true)
+                        setIsTitleDirty(true)
+                    }
+                } finally {
+                    const activeTitleSave = queue.activeByNoteId.get(targetNoteId)
+
+                    if (activeTitleSave?.requestSeq === requestSeq) {
+                        queue.activeByNoteId.delete(targetNoteId)
+                    }
+
+                    if (shouldUpdateCurrentState()) {
+                        setIsTitleSaving(false)
+                    }
+                }
+            }
+        }
+
+        titleProcessingPromiseRef.current = run().finally(() => {
+            titleProcessingPromiseRef.current = null
+
+            if (titleSaveQueueRef.current.pendingByNoteId.size > 0) {
+                processTitleSaveQueue()
+            }
+        })
+
+        return titleProcessingPromiseRef.current
+    }, [])
+
+    const enqueueTitleSave = useCallback((targetNoteId, nextTitle, options = {}) => {
+        if (!targetNoteId || !hasLoadedNote.current) {
+            return Promise.resolve()
+        }
+
+        const targetKey = String(targetNoteId)
+        titleSaveQueueRef.current.failedByNoteId.delete(targetKey)
+        titleSaveQueueRef.current.pendingByNoteId.set(targetKey, {
+            title: nextTitle,
+            allowState: options.allowState !== false
+        })
+
+        return processTitleSaveQueue()
+    }, [processTitleSaveQueue])
+
+    const scheduleTitleSave = useCallback((targetNoteId, nextTitle) => {
+        clearTitleAutosaveTimer()
+
+        titleAutosaveTimerRef.current = setTimeout(() => {
+            titleAutosaveTimerRef.current = null
+            enqueueTitleSave(targetNoteId, nextTitle)
+        }, TITLE_AUTOSAVE_DELAY_MS)
+    }, [clearTitleAutosaveTimer, enqueueTitleSave])
+
+    const flushTitleSave = useCallback((targetNoteId = noteIdRef.current, nextTitle = titleRef.current, options = {}) => {
+        clearTitleAutosaveTimer()
+
+        const normalizedTitle = normalizeTitle(nextTitle)
+        const confirmedTitle = titleSaveQueueRef.current.confirmedByNoteId.get(String(targetNoteId)) ?? ""
+
+        if (normalizedTitle === confirmedTitle && !titleSaveQueueRef.current.pendingByNoteId.has(String(targetNoteId))) {
+            return Promise.resolve()
+        }
+
+        return enqueueTitleSave(targetNoteId, nextTitle, options)
+    }, [clearTitleAutosaveTimer, enqueueTitleSave])
+
+    const waitForTitleQueueIdle = useCallback(async (targetNoteId) => {
+        const targetKey = String(targetNoteId)
+
+        while (true) {
+            const queue = titleSaveQueueRef.current
+            const hasTitleWork = (
+                queue.pendingByNoteId.has(targetKey) ||
+                queue.activeByNoteId.has(targetKey)
+            )
+
+            if (!hasTitleWork) {
+                return queue.failedByNoteId.has(targetKey) ? "failed" : "idle"
+            }
+
+            const processing = titleProcessingPromiseRef.current || processTitleSaveQueue()
+
+            if (!processing) {
+                return queue.failedByNoteId.has(targetKey) ? "failed" : "idle"
+            }
+
+            await processing
+        }
+    }, [processTitleSaveQueue])
+
+    const flushTitleBeforeNavigation = useCallback(async (targetNoteId) => {
+        const targetKey = String(targetNoteId)
+
+        while (
+            hasLoadedNote.current &&
+            String(noteIdRef.current || "") === targetKey
+        ) {
+            clearTitleAutosaveTimer()
+
+            const queue = titleSaveQueueRef.current
+            const latestTitle = normalizeTitle(titleRef.current)
+            const confirmedTitle = queue.confirmedByNoteId.get(targetKey) ?? ""
+            const pendingTitle = queue.pendingByNoteId.get(targetKey)?.title
+            const activeTitle = queue.activeByNoteId.get(targetKey)?.title
+            const newestTitleIsQueued = (
+                (pendingTitle !== undefined && normalizeTitle(pendingTitle) === latestTitle) ||
+                (activeTitle !== undefined && normalizeTitle(activeTitle) === latestTitle)
+            )
+            const titleCoveredByManualContentSave = isTitleCoveredByManualContentSave(targetKey, latestTitle)
+
+            if (
+                latestTitle !== confirmedTitle &&
+                !newestTitleIsQueued &&
+                !titleCoveredByManualContentSave
+            ) {
+                enqueueTitleSave(targetKey, titleRef.current)
+            } else if (
+                queue.pendingByNoteId.has(targetKey) &&
+                !titleProcessingPromiseRef.current
+            ) {
+                processTitleSaveQueue()
+            }
+
+            const result = await waitForTitleQueueIdle(targetKey)
+
+            if (result !== "idle") return result
+
+            const settledQueue = titleSaveQueueRef.current
+            const settledTitle = normalizeTitle(titleRef.current)
+            const settledConfirmedTitle = settledQueue.confirmedByNoteId.get(targetKey) ?? ""
+            const hasSettledWork = (
+                settledQueue.pendingByNoteId.has(targetKey) ||
+                settledQueue.activeByNoteId.has(targetKey)
+            )
+
+            if (settledTitle === settledConfirmedTitle && !hasSettledWork) {
+                return "idle"
+            }
+
+            // A manual content checkpoint may be the request that persists this title.
+            if (titleCoveredByManualContentSave && !hasSettledWork) {
+                return "idle"
+            }
+        }
+
+        return "stale"
+    }, [
+        clearTitleAutosaveTimer,
+        enqueueTitleSave,
+        isTitleCoveredByManualContentSave,
+        processTitleSaveQueue,
+        waitForTitleQueueIdle
+    ])
+
+
     useEffect(() => {
+        const currentNoteId = String(noteId)
+        let isCurrentNote = true
+
+        noteIdRef.current = currentNoteId
+        hasLoadedNote.current = false
+        clearTitleAutosaveTimer()
+        clearContentAutosaveTimer()
+        titleSaveQueueRef.current.pendingByNoteId.delete(currentNoteId)
+        titleSaveQueueRef.current.failedByNoteId.delete(currentNoteId)
+        const contentController = contentSaveControllerRef.current
+        contentController.generation += 1
+        contentController.pendingSnapshot = null
+        contentController.halted = false
+        contentController.recoveryAttempts = 0
+
+        if (contentController.recoveryTimer?.id) {
+            clearTimeout(contentController.recoveryTimer.id)
+        }
+
+        contentController.recoveryTimer = null
+        contentController.idleWaiters.forEach((waiter) => waiter.resolve("stale"))
+        contentController.idleWaiters.clear()
+        const currentContentGeneration = contentController.generation
+        lifecycleFlushRef.current = {
+            noteId: currentNoteId,
+            generation: currentContentGeneration,
+            title: null,
+            contentKey: null
+        }
+        confirmedContentRevisionRef.current = {
+            noteId: currentNoteId,
+            generation: currentContentGeneration,
+            revision: 0
+        }
+        contentConflictRef.current = null
+        contentErrorRef.current = ""
+        setIsTitleDirty(false)
+        setIsTitleSaving(false)
+        setIsTitleError(false)
+        setIsContentDirty(false)
+        setIsContentSaving(false)
+        setIsContentError(false)
+        setIsSaving(false)
+        setIsNavigatingAfterFlush(false)
+        setLoadError(false)
         const fetchNote = async () => {
             setIsLoading(true)
             setError("")
@@ -381,23 +818,125 @@ const NoteEditorV2Page = () => {
                 const response = await getNoteById(noteId)
                 const note = getNoteFromResponse(response)
 
-                setTitle(note?.title || "")
-                setContent(note?.content || "")
-                setContentJson(note?.contentJson || null)
+                if (!isCurrentNote) return
+
+                const nextTitle = note?.title || ""
+                const nextContent = note?.content || ""
+                const nextContentJson = note?.contentJson || null
+                const initialContentSnapshot = createContentSnapshot({
+                    noteId: currentNoteId,
+                    content: nextContent,
+                    contentJson: nextContentJson,
+                    sequence: contentController.sequence,
+                    generation: currentContentGeneration,
+                    title: nextTitle
+                })
+
+                titleRef.current = nextTitle
+                latestPayloadRef.current = {
+                    content: initialContentSnapshot.content,
+                    contentJson: initialContentSnapshot.contentJson
+                }
+                latestContentDraftRef.current = initialContentSnapshot
+                confirmedContentSnapshotRef.current = initialContentSnapshot
+                confirmedContentRevisionRef.current = {
+                    noteId: currentNoteId,
+                    generation: currentContentGeneration,
+                    revision: normalizeContentRevision(note?.contentRevision)
+                }
+                titleSaveQueueRef.current.confirmedByNoteId.set(currentNoteId, normalizeTitle(nextTitle))
+                titleSaveQueueRef.current.remoteConfirmedByNoteId.delete(currentNoteId)
+                setTitle(nextTitle)
+                setContent(nextContent)
+                setContentJson(nextContentJson)
                 setNoteOwner(note?.owner || note?.ownerId || note?.createdBy || null)
                 setNoteCollaborators(Array.isArray(note?.sharedWith) ? note.sharedWith : [])
                 hasLoadedNote.current = true
             } catch {
+                if (!isCurrentNote) return
+
                 setError("Unable to load note.")
                 setLoadError(true)
             } finally {
-                setIsLoading(false)
+                if (isCurrentNote) {
+                    setIsLoading(false)
+                }
             }
         }
 
         fetchNote()
-    }, [noteId])
 
+        return () => {
+            isCurrentNote = false
+            clearTitleAutosaveTimer()
+            clearContentAutosaveTimer()
+        }
+    }, [clearContentAutosaveTimer, clearTitleAutosaveTimer, noteId])
+
+    useEffect(() => {
+        const contentController = contentSaveControllerRef.current
+        isMountedRef.current = true
+
+        return () => {
+            isMountedRef.current = false
+            clearTitleAutosaveTimer()
+            clearContentAutosaveTimer()
+
+            contentController.idleWaiters.forEach((waiter) => waiter.resolve("stale"))
+            contentController.idleWaiters.clear()
+
+            if (contentController.recoveryTimer?.id) {
+                clearTimeout(contentController.recoveryTimer.id)
+            }
+            contentController.recoveryTimer = null
+        }
+    }, [clearContentAutosaveTimer, clearTitleAutosaveTimer])
+    useEffect(() => {
+        const currentNoteId = String(noteId)
+        const currentGeneration = contentSaveControllerRef.current.generation
+
+        const handleRemoteTitleUpdated = (payload = {}) => {
+            if (!payload?.noteId || typeof payload.title !== "string") {
+                return
+            }
+
+            if (
+                String(payload.noteId) !== currentNoteId ||
+                String(noteIdRef.current) !== currentNoteId ||
+                contentSaveControllerRef.current.generation !== currentGeneration
+            ) {
+                return
+            }
+
+            const queue = titleSaveQueueRef.current
+            const localTitle = normalizeTitle(titleRef.current)
+            const confirmedTitle = queue.confirmedByNoteId.get(currentNoteId) ?? ""
+            const hasLocalTitleWork = (
+                localTitle !== confirmedTitle ||
+                queue.pendingByNoteId.has(currentNoteId) ||
+                queue.activeByNoteId.has(currentNoteId)
+            )
+            const persistedTitle = normalizeTitle(payload.title)
+
+            if (hasLocalTitleWork) {
+                queue.remoteConfirmedByNoteId.set(currentNoteId, persistedTitle)
+                return
+            }
+
+            queue.confirmedByNoteId.set(currentNoteId, persistedTitle)
+            queue.remoteConfirmedByNoteId.delete(currentNoteId)
+            titleRef.current = persistedTitle
+            setTitle(persistedTitle)
+            setIsTitleDirty(false)
+            setIsTitleError(false)
+        }
+
+        socket.on("note:title-updated", handleRemoteTitleUpdated)
+
+        return () => {
+            socket.off("note:title-updated", handleRemoteTitleUpdated)
+        }
+    }, [noteId])
     useEffect(() => {
         const handleNoteRestored = (payload) => {
             if (String(payload?.noteId) !== String(noteId)) return
@@ -417,10 +956,10 @@ const NoteEditorV2Page = () => {
 
 
     useEffect(() => {
-        if (socketError && saveStatus === "Saving...") {
-            setSaveStatus("Save failed")
+        if (socketError && isContentSaving) {
+            setIsContentError(true)
         }
-    }, [socketError, saveStatus])
+    }, [isContentSaving, socketError])
 
     useEffect(() => {
         if (!isEditorMoreOpen) return undefined
@@ -446,64 +985,827 @@ const NoteEditorV2Page = () => {
 
     const handleTitleChange = (event) => {
         const nextTitle = event.target.value
+        const currentNoteId = String(noteId)
+        const confirmedTitle = titleSaveQueueRef.current.confirmedByNoteId.get(currentNoteId) ?? ""
+
+        titleRef.current = nextTitle
         setTitle(nextTitle)
-        setSaveStatus("Unsaved changes")
-        setLastActivity(Date.now())
+        setError("")
+        setIsTitleError(false)
+        setIsTitleDirty(normalizeTitle(nextTitle) !== confirmedTitle)
+        scheduleTitleSave(currentNoteId, nextTitle)
     }
 
-    const titleRef = useRef(title)
-    useEffect(() => {
-        titleRef.current = title
-    }, [title])
+    const handleTitleBlur = useCallback(() => {
+        setActivityRefreshTrigger(Date.now())
+        flushTitleSave(noteId, titleRef.current)
+    }, [flushTitleSave, noteId])
 
+    const recomputeTitleDirtyState = useCallback(() => {
+        if (!isMountedRef.current) return false
 
+        const targetKey = String(noteIdRef.current || "")
+        const queue = titleSaveQueueRef.current
+        const isDirty = (
+            normalizeTitle(titleRef.current) !== (queue.confirmedByNoteId.get(targetKey) ?? "") ||
+            queue.pendingByNoteId.has(targetKey) ||
+            queue.activeByNoteId.has(targetKey)
+        )
 
-    useEffect(() => {
-        if (hasLoadedNote.current) {
-            latestPayloadRef.current = { content, contentJson }
+        setIsTitleDirty(isDirty)
+        return isDirty
+    }, [])
+
+    const isCurrentContentSnapshot = useCallback((snapshot) => (
+        Boolean(snapshot) &&
+        isMountedRef.current &&
+        String(noteIdRef.current) === String(snapshot.noteId) &&
+        contentSaveControllerRef.current.generation === snapshot.generation
+    ), [])
+
+    const getNextContentSequence = useCallback(() => {
+        contentSaveControllerRef.current.sequence += 1
+        return contentSaveControllerRef.current.sequence
+    }, [])
+
+    const hasCurrentContentQueueWork = useCallback(() => {
+        const controller = contentSaveControllerRef.current
+        const currentNoteId = String(noteIdRef.current || "")
+        const currentGeneration = controller.generation
+        const matchesCurrent = (snapshot) => Boolean(snapshot) &&
+            String(snapshot.noteId) === currentNoteId &&
+            snapshot.generation === currentGeneration
+
+        const hasCurrentRecoveryTimer = Boolean(controller.recoveryTimer) &&
+            String(controller.recoveryTimer.noteId) === currentNoteId &&
+            controller.recoveryTimer.generation === currentGeneration
+
+        return (controller.active && matchesCurrent(controller.activeSnapshot)) ||
+            matchesCurrent(controller.pendingSnapshot) ||
+            hasCurrentRecoveryTimer
+    }, [])
+
+    const getContentQueueStatus = useCallback((targetNoteId, targetGeneration) => {
+        const controller = contentSaveControllerRef.current
+        const currentNoteId = String(noteIdRef.current || "")
+        const isCurrentTarget = (
+            String(targetNoteId) === currentNoteId &&
+            targetGeneration === controller.generation
+        )
+
+        if (!isCurrentTarget) {
+            return "stale"
         }
-    }, [content, contentJson])
+
+        const matchesTarget = (snapshot) => Boolean(snapshot) &&
+            String(snapshot.noteId) === String(targetNoteId) &&
+            snapshot.generation === targetGeneration
+        const hasWork = (
+            (controller.active && matchesTarget(controller.activeSnapshot)) ||
+            matchesTarget(controller.pendingSnapshot) ||
+            (Boolean(controller.recoveryTimer) &&
+                String(controller.recoveryTimer.noteId) === String(targetNoteId) &&
+                controller.recoveryTimer.generation === targetGeneration)
+        )
+
+        if (hasWork) return null
+        if (controller.halted || contentErrorRef.current) return "failed"
+        return "idle"
+    }, [])
+
+    const resolveContentQueueWaiters = useCallback(() => {
+        const controller = contentSaveControllerRef.current
+
+        controller.idleWaiters.forEach((waiter) => {
+            const status = getContentQueueStatus(waiter.noteId, waiter.generation)
+
+            if (status) {
+                controller.idleWaiters.delete(waiter)
+                waiter.resolve(status)
+            }
+        })
+    }, [getContentQueueStatus])
+
+    const waitForContentQueueIdle = useCallback((targetNoteId, targetGeneration) => {
+        const status = getContentQueueStatus(targetNoteId, targetGeneration)
+        if (status) return Promise.resolve(status)
+
+        return new Promise((resolve) => {
+            contentSaveControllerRef.current.idleWaiters.add({
+                noteId: String(targetNoteId),
+                generation: targetGeneration,
+                resolve
+            })
+        })
+    }, [getContentQueueStatus])
+
+    const syncContentSavingState = useCallback(() => {
+        if (!isMountedRef.current) return
+
+        const hasQueueWork = hasCurrentContentQueueWork()
+        setIsContentSaving(hasQueueWork)
+        setIsSaving(hasQueueWork)
+        resolveContentQueueWaiters()
+    }, [hasCurrentContentQueueWork, resolveContentQueueWaiters])
+
+    const recomputeContentDirtyState = useCallback(() => {
+        if (!isMountedRef.current) return false
+
+        const draft = latestContentDraftRef.current
+        const confirmed = confirmedContentSnapshotRef.current
+        const controller = contentSaveControllerRef.current
+        const isCurrentDraft = Boolean(draft) &&
+            String(draft.noteId) === String(noteIdRef.current || "") &&
+            draft.generation === controller.generation
+        const isDirty = Boolean(isCurrentDraft && (!confirmed || draft.contentKey !== confirmed.contentKey))
+
+        setIsContentDirty(isDirty)
+        return isDirty
+    }, [])
+
+    const setLatestContentDraft = useCallback((payload) => {
+        const controller = contentSaveControllerRef.current
+
+        if (controller.halted) {
+            controller.halted = false
+            controller.recoveryAttempts = 0
+            contentConflictRef.current = null
+        }
+
+        const snapshot = createContentSnapshot({
+            noteId: noteIdRef.current,
+            content: payload?.content ?? "",
+            contentJson: payload?.contentJson ?? null,
+            sequence: getNextContentSequence(),
+            generation: controller.generation,
+            title: titleRef.current
+        })
+
+        latestPayloadRef.current = {
+            content: snapshot.content,
+            contentJson: snapshot.contentJson
+        }
+        latestContentDraftRef.current = snapshot
+        setIsContentDirty(snapshot.contentKey !== confirmedContentSnapshotRef.current?.contentKey)
+        return snapshot
+    }, [getNextContentSequence])
+
+    const buildContentSaveSnapshot = useCallback((saveType = "autosave") => {
+        const draft = latestContentDraftRef.current || setLatestContentDraft(latestPayloadRef.current)
+        const snapshot = {
+            ...draft,
+            saveType,
+            sequence: getNextContentSequence(),
+            title: titleRef.current
+        }
+
+        snapshot.payload = saveType === "manual"
+            ? {
+                title: snapshot.title,
+                content: snapshot.content,
+                contentJson: snapshot.contentJson,
+                editorVersion: "v2",
+                saveType
+            }
+            : {
+                content: snapshot.content,
+                contentJson: snapshot.contentJson,
+                editorVersion: "v2",
+                saveType
+            }
+
+        return snapshot
+    }, [getNextContentSequence, setLatestContentDraft])
+
+    const withContentSaveIntent = useCallback((snapshot, saveType) => {
+        const nextSnapshot = {
+            ...snapshot,
+            saveType,
+            sequence: getNextContentSequence(),
+            title: titleRef.current
+        }
+
+        nextSnapshot.payload = saveType === "manual"
+            ? {
+                title: nextSnapshot.title,
+                content: nextSnapshot.content,
+                contentJson: nextSnapshot.contentJson,
+                editorVersion: "v2",
+                saveType: "manual"
+            }
+            : {
+                content: nextSnapshot.content,
+                contentJson: nextSnapshot.contentJson,
+                editorVersion: "v2",
+                saveType: "autosave"
+            }
+
+        return nextSnapshot
+    }, [getNextContentSequence])
+
+    const processContentSaveQueue = useCallback(() => {
+        const controller = contentSaveControllerRef.current
+
+        if (controller.active || controller.halted || controller.recoveryTimer) return
+
+        const snapshot = controller.pendingSnapshot
+
+        if (!snapshot) {
+            syncContentSavingState()
+            return
+        }
+
+        controller.pendingSnapshot = null
+        const confirmedRevision = confirmedContentRevisionRef.current
+        const expectedContentRevision = (
+            String(confirmedRevision.noteId) === String(snapshot.noteId) &&
+            confirmedRevision.generation === snapshot.generation
+        )
+            ? confirmedRevision.revision
+            : 0
+        const activeSnapshot = {
+            ...snapshot,
+            expectedContentRevision,
+            payload: {
+                ...snapshot.payload,
+                expectedContentRevision
+            }
+        }
+        controller.active = true
+        controller.activeSnapshot = activeSnapshot
+
+        if (isCurrentContentSnapshot(activeSnapshot)) {
+            setIsSaving(true)
+            setIsContentSaving(true)
+            setIsContentError(false)
+
+            if (contentErrorRef.current) {
+                contentErrorRef.current = ""
+                setError("")
+            }
+        }
+
+        const finishQueue = () => {
+            controller.active = false
+            controller.activeSnapshot = null
+
+            if (controller.halted) {
+                controller.pendingSnapshot = null
+                syncContentSavingState()
+                return
+            }
+
+            if (controller.pendingSnapshot) {
+                processContentSaveQueue()
+                return
+            }
+
+            syncContentSavingState()
+        }
+
+        const scheduleRecovery = (saveType, attempt) => {
+            const delay = getContentRecoveryDelay(attempt)
+
+            if (delay === 0) {
+                const recoveryDraft = latestContentDraftRef.current
+
+                if (isCurrentContentSnapshot(recoveryDraft)) {
+                    controller.pendingSnapshot = withContentSaveIntent(recoveryDraft, saveType)
+                }
+
+                return
+            }
+
+            const timer = {
+                id: null,
+                noteId: activeSnapshot.noteId,
+                generation: activeSnapshot.generation,
+                saveType
+            }
+
+            timer.id = setTimeout(() => {
+                if (
+                    controller.recoveryTimer !== timer ||
+                    !isCurrentContentSnapshot({
+                        noteId: timer.noteId,
+                        generation: timer.generation
+                    }) ||
+                    controller.halted
+                ) {
+                    return
+                }
+
+                controller.recoveryTimer = null
+                const recoveryDraft = latestContentDraftRef.current
+
+                if (!isCurrentContentSnapshot(recoveryDraft)) {
+                    syncContentSavingState()
+                    return
+                }
+
+                const pendingIntent = controller.pendingSnapshot?.saveType
+                const recoverySaveType = (
+                    timer.saveType === "manual" || pendingIntent === "manual"
+                )
+                    ? "manual"
+                    : "autosave"
+
+                controller.pendingSnapshot = withContentSaveIntent(
+                    recoveryDraft,
+                    recoverySaveType
+                )
+                processContentSaveQueue()
+            }, delay)
+
+            controller.recoveryTimer = timer
+        }
+
+        updateNote(activeSnapshot.noteId, activeSnapshot.payload)
+            .then((response) => {
+                const savedNote = getNoteFromResponse(response)
+
+                if (!isCurrentContentSnapshot(activeSnapshot)) return
+
+                if (controller.recoveryTimer?.id) {
+                    clearTimeout(controller.recoveryTimer.id)
+                }
+                controller.recoveryTimer = null
+                confirmedContentSnapshotRef.current = activeSnapshot
+                confirmedContentRevisionRef.current = {
+                    noteId: activeSnapshot.noteId,
+                    generation: activeSnapshot.generation,
+                    revision: normalizeContentRevision(savedNote?.contentRevision)
+                }
+                controller.recoveryAttempts = 0
+                contentConflictRef.current = null
+                recomputeContentDirtyState()
+                setIsContentError(false)
+
+                if (contentErrorRef.current) {
+                    contentErrorRef.current = ""
+                    setError("")
+                }
+
+                if (activeSnapshot.saveType === "manual") {
+                    const confirmedTitle = normalizeTitle(savedNote?.title ?? activeSnapshot.title)
+
+                    titleSaveQueueRef.current.confirmedByNoteId.set(String(activeSnapshot.noteId), confirmedTitle)
+                    titleSaveQueueRef.current.pendingByNoteId.delete(String(activeSnapshot.noteId))
+                    setIsTitleDirty(normalizeTitle(titleRef.current) !== confirmedTitle)
+                    setIsTitleError(false)
+                    setHistoryRefreshTrigger(Date.now())
+                    setActivityRefreshTrigger(Date.now())
+                }
+            })
+            .catch((saveError) => {
+                if (!isCurrentContentSnapshot(activeSnapshot)) return
+
+                const conflict = getContentRevisionConflict(saveError)
+
+                if (conflict) {
+                    const recoveryDraft = latestContentDraftRef.current
+                    const nextRecoveryAttempt = controller.recoveryAttempts + 1
+                    const canRecover = (
+                        nextRecoveryAttempt <= MAX_CONTENT_RECOVERY_ATTEMPTS &&
+                        isCurrentContentSnapshot(recoveryDraft)
+                    )
+
+                    confirmedContentRevisionRef.current = {
+                        noteId: activeSnapshot.noteId,
+                        generation: activeSnapshot.generation,
+                        revision: conflict.currentContentRevision
+                    }
+
+                    if (canRecover) {
+                        const pendingIntent = controller.pendingSnapshot?.saveType
+                        const recoverySaveType = (
+                            activeSnapshot.saveType === "manual" ||
+                            pendingIntent === "manual"
+                        )
+                            ? "manual"
+                            : "autosave"
+
+                        controller.recoveryAttempts = nextRecoveryAttempt
+                        contentConflictRef.current = {
+                            noteId: activeSnapshot.noteId,
+                            generation: activeSnapshot.generation,
+                            currentContentRevision: conflict.currentContentRevision,
+                            terminal: false
+                        }
+                        scheduleRecovery(recoverySaveType, nextRecoveryAttempt)
+                        recomputeContentDirtyState()
+                        setIsContentError(false)
+                        return
+                    }
+
+                    if (controller.recoveryTimer?.id) {
+                        clearTimeout(controller.recoveryTimer.id)
+                    }
+                    controller.recoveryTimer = null
+                    controller.halted = true
+                    controller.pendingSnapshot = null
+                    contentConflictRef.current = {
+                        noteId: activeSnapshot.noteId,
+                        generation: activeSnapshot.generation,
+                        currentContentRevision: conflict.currentContentRevision,
+                        terminal: true
+                    }
+                    recomputeContentDirtyState()
+                    contentErrorRef.current = "Unable to save note."
+                    setError(contentErrorRef.current)
+                    setIsContentError(true)
+                    return
+                }
+
+                recomputeContentDirtyState()
+
+                if (!contentSaveControllerRef.current.pendingSnapshot) {
+                    contentErrorRef.current = "Unable to save note."
+                    setError(contentErrorRef.current)
+                    setIsContentError(true)
+                }
+            })
+            .finally(finishQueue)
+    }, [
+        isCurrentContentSnapshot,
+        recomputeContentDirtyState,
+        syncContentSavingState,
+        withContentSaveIntent
+    ])
+    const enqueueContentSave = useCallback((snapshot) => {
+        const controller = contentSaveControllerRef.current
+        const confirmedSnapshot = confirmedContentSnapshotRef.current
+        const activeSnapshot = controller.activeSnapshot
+        const existingPending = controller.pendingSnapshot
+
+        if (controller.halted) {
+            if (snapshot.saveType !== "manual") {
+                recomputeContentDirtyState()
+                syncContentSavingState()
+                return
+            }
+
+            controller.halted = false
+            controller.recoveryAttempts = 0
+            contentConflictRef.current = null
+        }
+
+        if (!controller.active && !existingPending && snapshot.contentKey === confirmedSnapshot?.contentKey) {
+            recomputeContentDirtyState()
+            syncContentSavingState()
+            return
+        }
+
+        if (controller.active && !existingPending && snapshot.contentKey === activeSnapshot?.contentKey) {
+            const shouldQueueManualCheckpoint = snapshot.saveType === "manual" && activeSnapshot?.saveType !== "manual"
+            if (!shouldQueueManualCheckpoint) {
+                syncContentSavingState()
+                return
+            }
+        }
+
+        const saveType = existingPending?.saveType === "manual" || snapshot.saveType === "manual"
+            ? "manual"
+            : "autosave"
+
+        controller.pendingSnapshot = withContentSaveIntent(snapshot, saveType)
+
+        if (isCurrentContentSnapshot(controller.pendingSnapshot)) {
+            setIsSaving(true)
+            setIsContentSaving(true)
+            setIsContentError(false)
+        }
+
+        processContentSaveQueue()
+    }, [isCurrentContentSnapshot, processContentSaveQueue, recomputeContentDirtyState, syncContentSavingState, withContentSaveIntent])
 
     const handleSave = useCallback(async (saveType = "manual") => {
         if (!hasLoadedNote.current) return
 
-        setIsSaving(true)
-        setSaveStatus("Saving...")
-        setError("")
+        if (saveType === "manual") {
+            clearTitleAutosaveTimer()
+            titleSaveQueueRef.current.pendingByNoteId.delete(String(noteId))
+
+            if (titleProcessingPromiseRef.current) {
+                await titleProcessingPromiseRef.current
+            }
+
+            clearTitleAutosaveTimer()
+            titleSaveQueueRef.current.pendingByNoteId.delete(String(noteId))
+        }
+
+        enqueueContentSave(buildContentSaveSnapshot(saveType))
+    }, [buildContentSaveSnapshot, clearTitleAutosaveTimer, enqueueContentSave, noteId])
+
+    const flushContentBeforeNavigation = useCallback(async (targetNoteId, targetGeneration) => {
+        const targetKey = String(targetNoteId)
+
+        while (
+            hasLoadedNote.current &&
+            String(noteIdRef.current || "") === targetKey &&
+            contentSaveControllerRef.current.generation === targetGeneration
+        ) {
+            clearContentAutosaveTimer()
+
+            const draft = latestContentDraftRef.current
+            const confirmed = confirmedContentSnapshotRef.current
+            const isCurrentDraft = Boolean(draft) &&
+                String(draft.noteId) === targetKey &&
+                draft.generation === targetGeneration
+            const isDirty = Boolean(
+                isCurrentDraft &&
+                (!confirmed || draft.contentKey !== confirmed.contentKey)
+            )
+            const queueStatus = getContentQueueStatus(targetKey, targetGeneration)
+
+            if (queueStatus === "failed") return queueStatus
+
+            if (isDirty) {
+                enqueueContentSave(buildContentSaveSnapshot("autosave"))
+            } else if (queueStatus === "idle") {
+                return "idle"
+            }
+
+            const settledStatus = await waitForContentQueueIdle(targetKey, targetGeneration)
+
+            if (settledStatus !== "idle") return settledStatus
+        }
+
+        return "stale"
+    }, [
+        buildContentSaveSnapshot,
+        clearContentAutosaveTimer,
+        enqueueContentSave,
+        getContentQueueStatus,
+        waitForContentQueueIdle
+    ])
+
+    const flushBeforeNavigation = useCallback(async () => {
+        const targetNoteId = String(noteIdRef.current || "")
+        const targetGeneration = contentSaveControllerRef.current.generation
+
+        if (!targetNoteId || !hasLoadedNote.current) return "stale"
+
+        while (
+            hasLoadedNote.current &&
+            String(noteIdRef.current || "") === targetNoteId &&
+            contentSaveControllerRef.current.generation === targetGeneration
+        ) {
+            const titleStatus = await flushTitleBeforeNavigation(targetNoteId)
+
+            if (titleStatus !== "idle") return titleStatus
+
+            const contentStatus = await flushContentBeforeNavigation(targetNoteId, targetGeneration)
+
+            if (contentStatus !== "idle") return contentStatus
+
+            const titleQueue = titleSaveQueueRef.current
+            const latestTitle = normalizeTitle(titleRef.current)
+            const confirmedTitle = titleQueue.confirmedByNoteId.get(targetNoteId) ?? ""
+            const titleIsSettled = (
+                latestTitle === confirmedTitle &&
+                !titleQueue.pendingByNoteId.has(targetNoteId) &&
+                !titleQueue.activeByNoteId.has(targetNoteId)
+            )
+            const draft = latestContentDraftRef.current
+            const confirmed = confirmedContentSnapshotRef.current
+            const contentIsSettled = Boolean(
+                draft &&
+                String(draft.noteId) === targetNoteId &&
+                draft.generation === targetGeneration &&
+                confirmed &&
+                draft.contentKey === confirmed.contentKey &&
+                getContentQueueStatus(targetNoteId, targetGeneration) === "idle"
+            )
+
+            if (titleIsSettled && contentIsSettled) return "idle"
+        }
+
+        return "stale"
+    }, [
+        flushContentBeforeNavigation,
+        flushTitleBeforeNavigation,
+        getContentQueueStatus
+    ])
+
+    const navigateAfterFlush = useCallback(async (destination) => {
+        if (navigationFlushPromiseRef.current) return
+
+        let didNavigate = false
+        const navigationTask = (async () => {
+            if (isMountedRef.current) {
+                setIsNavigatingAfterFlush(true)
+            }
+
+            const status = await flushBeforeNavigation()
+
+            if (status === "idle" && isMountedRef.current) {
+                didNavigate = true
+                navigate(destination)
+            }
+
+            return status
+        })()
+
+        navigationFlushPromiseRef.current = navigationTask
 
         try {
-            const currentPlainText = latestPayloadRef.current.content
-            const currentJson = latestPayloadRef.current.contentJson
-
-            await updateNote(noteId, {
-                title,
-                content: currentPlainText,
-                contentJson: currentJson,
-                editorVersion: "v2",
-                saveType
-            })
-            setSaveStatus("Saved")
-            if (saveType === "manual") {
-                setHistoryRefreshTrigger(Date.now())
-                setActivityRefreshTrigger(Date.now())
-            }
-        } catch {
-            setError("Unable to save note.")
-            setSaveStatus("Save failed")
+            return await navigationTask
         } finally {
-            setIsSaving(false)
+            if (navigationFlushPromiseRef.current === navigationTask) {
+                navigationFlushPromiseRef.current = null
+            }
+
+            if (isMountedRef.current && !didNavigate) {
+                setIsNavigatingAfterFlush(false)
+            }
         }
-    }, [noteId, title])
+    }, [flushBeforeNavigation, navigate])
+
+    const flushForPageLifecycle = useCallback(() => {
+        if (!isMountedRef.current || !hasLoadedNote.current) return
+
+        const targetNoteId = String(noteIdRef.current || "")
+        const controller = contentSaveControllerRef.current
+        const targetGeneration = controller.generation
+
+        if (!targetNoteId) return
+
+        const lifecycle = lifecycleFlushRef.current
+        if (
+            lifecycle.noteId !== targetNoteId ||
+            lifecycle.generation !== targetGeneration
+        ) {
+            lifecycleFlushRef.current = {
+                noteId: targetNoteId,
+                generation: targetGeneration,
+                title: null,
+                contentKey: null
+            }
+        }
+
+        clearTitleAutosaveTimer()
+        clearContentAutosaveTimer()
+
+        const currentLifecycle = lifecycleFlushRef.current
+        const titleQueue = titleSaveQueueRef.current
+        const latestTitle = normalizeTitle(titleRef.current)
+        const confirmedTitle = titleQueue.confirmedByNoteId.get(targetNoteId) ?? ""
+        const pendingTitle = titleQueue.pendingByNoteId.get(targetNoteId)?.title
+        const activeTitle = titleQueue.activeByNoteId.get(targetNoteId)?.title
+        const latestTitleIsQueued = (
+            (pendingTitle !== undefined && normalizeTitle(pendingTitle) === latestTitle) ||
+            (activeTitle !== undefined && normalizeTitle(activeTitle) === latestTitle)
+        )
+        const titleIsDirty = latestTitle !== confirmedTitle
+
+        if (
+            titleIsDirty &&
+            !titleQueue.failedByNoteId.has(targetNoteId) &&
+            !latestTitleIsQueued &&
+            !isTitleCoveredByManualContentSave(targetNoteId, latestTitle) &&
+            currentLifecycle.title !== latestTitle
+        ) {
+            currentLifecycle.title = latestTitle
+            enqueueTitleSave(targetNoteId, titleRef.current)
+        } else if (titleIsDirty) {
+            currentLifecycle.title = latestTitle
+        }
+
+        const draft = latestContentDraftRef.current
+        const confirmed = confirmedContentSnapshotRef.current
+        const isCurrentDraft = Boolean(draft) &&
+            String(draft.noteId) === targetNoteId &&
+            draft.generation === targetGeneration
+        const contentIsDirty = Boolean(
+            isCurrentDraft &&
+            (!confirmed || draft.contentKey !== confirmed.contentKey)
+        )
+        const latestContentIsQueued = [controller.pendingSnapshot, controller.activeSnapshot].some((snapshot) => (
+            snapshot?.contentKey === draft?.contentKey &&
+            String(snapshot.noteId) === targetNoteId &&
+            snapshot.generation === targetGeneration
+        ))
+        const contentQueueStatus = getContentQueueStatus(targetNoteId, targetGeneration)
+
+        if (
+            contentIsDirty &&
+            contentQueueStatus !== "failed" &&
+            !controller.halted &&
+            !latestContentIsQueued &&
+            currentLifecycle.contentKey !== draft.contentKey
+        ) {
+            currentLifecycle.contentKey = draft.contentKey
+            enqueueContentSave(buildContentSaveSnapshot("autosave"))
+        } else if (contentIsDirty) {
+            currentLifecycle.contentKey = draft.contentKey
+        }
+    }, [
+        buildContentSaveSnapshot,
+        clearContentAutosaveTimer,
+        clearTitleAutosaveTimer,
+        enqueueContentSave,
+        enqueueTitleSave,
+        getContentQueueStatus,
+        isTitleCoveredByManualContentSave
+    ])
+
+    const resumeAfterPageLifecycle = useCallback(() => {
+        if (!isMountedRef.current || !hasLoadedNote.current) return
+
+        const targetNoteId = String(noteIdRef.current || "")
+        const controller = contentSaveControllerRef.current
+        const targetGeneration = controller.generation
+
+        if (!targetNoteId) return
+
+        lifecycleFlushRef.current = {
+            noteId: targetNoteId,
+            generation: targetGeneration,
+            title: null,
+            contentKey: null
+        }
+
+        const titleIsDirty = recomputeTitleDirtyState()
+        const contentIsDirty = recomputeContentDirtyState()
+        const titleQueue = titleSaveQueueRef.current
+        const hasTitleQueueWork = (
+            titleQueue.pendingByNoteId.has(targetNoteId) ||
+            titleQueue.activeByNoteId.has(targetNoteId)
+        )
+
+        if (
+            titleIsDirty &&
+            !hasTitleQueueWork &&
+            !titleQueue.failedByNoteId.has(targetNoteId) &&
+            !isTitleCoveredByManualContentSave(targetNoteId, titleRef.current)
+        ) {
+            scheduleTitleSave(targetNoteId, titleRef.current)
+        }
+
+        syncContentSavingState()
+
+        if (
+            contentIsDirty &&
+            getContentQueueStatus(targetNoteId, targetGeneration) === "idle"
+        ) {
+            setContentLastActivity(Date.now())
+        }
+    }, [
+        getContentQueueStatus,
+        isTitleCoveredByManualContentSave,
+        recomputeContentDirtyState,
+        recomputeTitleDirtyState,
+        scheduleTitleSave,
+        syncContentSavingState
+    ])
 
     useEffect(() => {
-        if (!hasLoadedNote.current || saveStatus !== "Unsaved changes") return undefined
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "hidden") {
+                flushForPageLifecycle()
+                return
+            }
 
-        const saveTimer = setTimeout(() => {
+            if (document.visibilityState === "visible") {
+                resumeAfterPageLifecycle()
+            }
+        }
+
+        const handlePageHide = () => {
+            // React cleanup remains the source of truth for actual unmounting, including bfcache returns.
+            flushForPageLifecycle()
+        }
+
+        const handlePageShow = (event) => {
+            if (event.persisted) {
+                resumeAfterPageLifecycle()
+            }
+        }
+
+        document.addEventListener("visibilitychange", handleVisibilityChange)
+        window.addEventListener("pagehide", handlePageHide)
+        window.addEventListener("pageshow", handlePageShow)
+
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibilityChange)
+            window.removeEventListener("pagehide", handlePageHide)
+            window.removeEventListener("pageshow", handlePageShow)
+        }
+    }, [flushForPageLifecycle, resumeAfterPageLifecycle])
+
+    useEffect(() => {
+        clearContentAutosaveTimer()
+
+        if (!hasLoadedNote.current || !isContentDirty) return undefined
+
+        contentAutosaveTimerRef.current = setTimeout(() => {
+            contentAutosaveTimerRef.current = null
             handleSave("autosave")
-        }, 1000)
+        }, CONTENT_AUTOSAVE_DELAY_MS)
 
-        return () => clearTimeout(saveTimer)
-    }, [saveStatus, lastActivity, handleSave])
+        return clearContentAutosaveTimer
+    }, [clearContentAutosaveTimer, isContentDirty, contentLastActivity, handleSave])
 
     const handleDelete = async () => {
         setError("")
@@ -558,8 +1860,9 @@ const NoteEditorV2Page = () => {
                         <button
                             className="ghost-button"
                             type="button"
-                            onClick={() => navigate("/dashboard")}
+                            onClick={() => navigateAfterFlush("/dashboard")}
                             aria-label="Back to dashboard"
+                            disabled={isNavigatingAfterFlush}
                         >
                             <IconArrowLeft size={15} />
                             <span className="desktop-label">Back</span>
@@ -627,10 +1930,9 @@ const NoteEditorV2Page = () => {
                             className="primary-button save-button"
                             type="button"
                             onClick={() => handleSave("manual")}
-                            disabled={isSaving}
                         >
                             <IconSave size={15} />
-                            <span className="desktop-label">{isSaving ? "Saving…" : "Save"}</span>
+                            <span className="desktop-label">{isSaving ? "Saving..." : "Save"}</span>
                         </button>
 
                         <div className="editor-more" ref={editorMoreRef}>
@@ -706,7 +2008,7 @@ const NoteEditorV2Page = () => {
                                         role="menuitem"
                                         onClick={() => {
                                             setIsEditorMoreOpen(false)
-                                            navigate("/settings")
+                                            navigateAfterFlush("/settings")
                                         }}
                                     >
                                         <IconSettings size={14} />
@@ -746,7 +2048,7 @@ const NoteEditorV2Page = () => {
                             type="text"
                             value={title}
                             onChange={handleTitleChange}
-                            onBlur={() => setActivityRefreshTrigger(Date.now())}
+                            onBlur={handleTitleBlur}
                             placeholder="Untitled"
                             aria-label="Note title"
                         />
@@ -769,9 +2071,9 @@ const NoteEditorV2Page = () => {
                             }}
                             onUpdate={(payload) => {
                                 if (hasLoadedNote.current) {
-                                    latestPayloadRef.current = payload
-                                    setSaveStatus("Unsaved changes")
-                                    setLastActivity(Date.now())
+                                    setLatestContentDraft(payload)
+                                    setIsContentError(false)
+                                    setContentLastActivity(Date.now())
                                 }
                             }}
                         />

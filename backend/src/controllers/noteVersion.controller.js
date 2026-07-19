@@ -14,6 +14,32 @@ import { asyncHandler } from "../utils/asyncHandler.js"
 
 const userSelect = "username email name"
 
+const normalizeContentRevision = (value) => (
+    Number.isInteger(value) && value >= 0 ? value : 0
+)
+
+const getContentRevisionMatch = (expectedContentRevision) => (
+    expectedContentRevision === 0
+        ? {
+            $or: [
+                { contentRevision: 0 },
+                { contentRevision: { $exists: false } }
+            ]
+        }
+        : { contentRevision: expectedContentRevision }
+)
+
+const createContentRevisionConflictError = (currentContentRevision) => {
+    const error = new ApiError(
+        409,
+        "The document content changed before this version could be restored."
+    )
+
+    error.code = "CONTENT_REVISION_CONFLICT"
+    error.currentContentRevision = normalizeContentRevision(currentContentRevision)
+    return error
+}
+
 const userCanAccessNote = (note, userId) => {
     return String(note.owner) === String(userId) ||
         note.sharedWith.some((sharedUserId) => String(sharedUserId) === String(userId))
@@ -123,24 +149,48 @@ const restoreNoteVersion = asyncHandler(async (req, res) => {
         skipIfDuplicate: false
     })
 
-    note.title = version.title || ""
-    note.content = version.content || ""
-    note.contentJson = version.contentJson ?? null
-    note.yjsState = version.yjsState ? Buffer.from(version.yjsState) : null
-    note.yjsStateUpdatedAt = version.yjsState ? new Date() : null
+    const restoredNote = await Note.findOneAndUpdate(
+        {
+            _id: note._id,
+            $and: [getContentRevisionMatch(normalizeContentRevision(note.contentRevision))]
+        },
+        {
+            $set: {
+                title: version.title || "",
+                content: version.content || "",
+                contentJson: version.contentJson ?? null,
+                yjsState: version.yjsState ? Buffer.from(version.yjsState) : null,
+                yjsStateUpdatedAt: version.yjsState ? new Date() : null
+            },
+            $inc: { contentRevision: 1 }
+        },
+        {
+            returnDocument: "after",
+            runValidators: true
+        }
+    )
 
-    await note.save()
-    await pruneNoteVersions(note._id)
+    if (!restoredNote) {
+        const currentNote = await Note.findById(note._id).select("contentRevision")
 
-    releaseAuthoritativeYDoc(note._id)
+        if (currentNote) {
+            throw createContentRevisionConflictError(currentNote.contentRevision)
+        }
+
+        throw new ApiError(404, "Note not found")
+    }
+
+    await pruneNoteVersions(restoredNote._id)
+
+    releaseAuthoritativeYDoc(restoredNote._id)
     emitNoteRestored({
-        noteId: note._id,
+        noteId: restoredNote._id,
         versionId: version._id,
         restoredBy: req.user._id
     })
 
     await recordActivity({
-        noteId: note._id,
+        noteId: restoredNote._id,
         actor: req.user,
         type: "VERSION_RESTORED",
         metadata: {
@@ -150,9 +200,8 @@ const restoreNoteVersion = asyncHandler(async (req, res) => {
 
     return res
         .status(200)
-        .json(new ApiResponse(200, note, "Note version restored successfully"))
+        .json(new ApiResponse(200, restoredNote, "Note version restored successfully"))
 })
-
 export {
     getNoteVersionById,
     getNoteVersions,

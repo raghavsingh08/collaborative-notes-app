@@ -1,4 +1,5 @@
 import ActivityEvent from "../models/activityEvent.model.js"
+import { emitActivityUpdated } from "../sockets/socketState.js"
 
 const getActorName = (actor) => {
     return actor?.name || actor?.username || actor?.email || ""
@@ -24,12 +25,22 @@ const logActivity = async ({
     type,
     metadata = {}
 }) => {
-    return ActivityEvent.create({
+    const activity = await ActivityEvent.create({
         noteId,
         actor: normalizeActor(actor),
         type,
         metadata
     })
+
+    emitActivityUpdated({
+        noteId: activity.noteId,
+        activityId: activity._id,
+        type: activity.type,
+        actorId: activity.actor?._id,
+        createdAt: activity.createdAt
+    })
+
+    return activity
 }
 
 export {

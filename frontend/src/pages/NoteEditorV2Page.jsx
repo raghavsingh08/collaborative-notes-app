@@ -434,7 +434,7 @@ const NoteEditorV2Page = () => {
 
     // Activity Integration State
     const [isActivityOpen, setIsActivityOpen] = useState(false)
-    const [activityRefreshTrigger, setActivityRefreshTrigger] = useState(0)
+
 
     // Mobile Comments State
     const [isCommentsOpen, setIsCommentsOpen] = useState(false)
@@ -997,7 +997,7 @@ const NoteEditorV2Page = () => {
     }
 
     const handleTitleBlur = useCallback(() => {
-        setActivityRefreshTrigger(Date.now())
+
         flushTitleSave(noteId, titleRef.current)
     }, [flushTitleSave, noteId])
 
@@ -1354,7 +1354,7 @@ const NoteEditorV2Page = () => {
                     setIsTitleDirty(normalizeTitle(titleRef.current) !== confirmedTitle)
                     setIsTitleError(false)
                     setHistoryRefreshTrigger(Date.now())
-                    setActivityRefreshTrigger(Date.now())
+
                 }
             })
             .catch((saveError) => {
@@ -2134,7 +2134,7 @@ const NoteEditorV2Page = () => {
                         <ActivitySidebar 
                             noteId={noteId}
                             currentUser={user}
-                            refreshTrigger={activityRefreshTrigger}
+
                             onClose={() => setIsActivityOpen(false)}
                             isOpen={true}
                         />
@@ -2151,7 +2151,7 @@ const NoteEditorV2Page = () => {
                         typingUsers={uniqueTypingUsers}
                         onClose={() => {
                             setIsShareOpen(false)
-                            setActivityRefreshTrigger(Date.now())
+
                         }}
                     />
                 )}

@@ -71,6 +71,17 @@ const requireBody = (body, limit = 1000, type = "Comment") => {
     return normalizedBody
 }
 
+const createResolvedThreadError = () => {
+    const error = new ApiError(
+        409,
+        "Replies cannot be added to a resolved comment thread."
+    )
+
+    error.code = "COMMENT_THREAD_RESOLVED"
+
+    return error
+}
+
 const findAccessibleThread = async (threadId, userId) => {
     if (!mongoose.isValidObjectId(threadId)) {
         throw new ApiError(400, "Invalid thread id")
@@ -147,9 +158,6 @@ const canManageThreadStatus = (note, thread, userId) => {
     return isNoteOwner || isThreadCreator || isEditor
 }
 
-const isThreadResolved = (thread) => {
-    return thread.resolved === true || thread.status === "resolved"
-}
 
 const getThreadLatestActivity = (thread) => {
     let latestActivityAt = thread.createdAt || new Date(0)
@@ -316,31 +324,54 @@ const addCommentReply = asyncHandler(async (req, res) => {
     const thread = await findAccessibleThread(threadId, req.user._id)
     const normalizedBody = requireBody(body, 1000, "Reply")
 
-    thread.comments.push({
-        body: normalizedBody,
-        createdBy: req.user._id
-    })
+    const updatedThread = await CommentThread.findOneAndUpdate(
+        {
+            _id: thread._id,
+            status: "open"
+        },
+        {
+            $push: {
+                comments: {
+                    body: normalizedBody,
+                    createdBy: req.user._id
+                }
+            }
+        },
+        {
+            returnDocument: "after",
+            runValidators: true
+        }
+    )
 
-    await thread.save()
-    const reply = thread.comments[thread.comments.length - 1]
+    if (!updatedThread) {
+        const currentThread = await CommentThread.findById(thread._id)
+
+        if (!currentThread) {
+            throw new ApiError(404, "Comment thread not found")
+        }
+
+        throw createResolvedThreadError()
+    }
+
+    const reply = updatedThread.comments[updatedThread.comments.length - 1]
 
     const populatedThread = await populateThreadUsers(
-        CommentThread.findById(thread._id)
+        CommentThread.findById(updatedThread._id)
     )
 
     notifyCommentUpdated({
-        noteId: thread.noteId,
-        threadId: thread._id,
+        noteId: updatedThread.noteId,
+        threadId: updatedThread._id,
         action: "replied",
         updatedBy: req.user._id
     })
 
     await recordActivity({
-        noteId: thread.noteId,
+        noteId: updatedThread.noteId,
         actor: req.user,
         type: "REPLY_CREATED",
         metadata: {
-            threadId: thread._id,
+            threadId: updatedThread._id,
             replyId: reply?._id
         }
     })
@@ -359,9 +390,34 @@ const resolveCommentThread = asyncHandler(async (req, res) => {
         throw new ApiError(403, "You do not have permission to resolve this thread")
     }
 
-    if (isThreadResolved(thread)) {
+    const updatedThread = await CommentThread.findOneAndUpdate(
+        {
+            _id: thread._id,
+            status: "open"
+        },
+        {
+            $set: {
+                status: "resolved",
+                resolved: true,
+                resolvedBy: req.user._id,
+                resolvedAt: new Date()
+            }
+        },
+        {
+            returnDocument: "after",
+            runValidators: true
+        }
+    )
+
+    if (!updatedThread) {
+        const currentThread = await CommentThread.findById(thread._id)
+
+        if (!currentThread) {
+            throw new ApiError(404, "Comment thread not found")
+        }
+
         const populatedThread = await populateThreadUsers(
-            CommentThread.findById(thread._id)
+            CommentThread.findById(currentThread._id)
         )
 
         return res
@@ -369,30 +425,23 @@ const resolveCommentThread = asyncHandler(async (req, res) => {
             .json(new ApiResponse(200, populatedThread, "Comment thread is already resolved"))
     }
 
-    thread.status = "resolved"
-    thread.resolved = true
-    thread.resolvedBy = req.user._id
-    thread.resolvedAt = new Date()
-
-    await thread.save()
-
     const populatedThread = await populateThreadUsers(
-        CommentThread.findById(thread._id)
+        CommentThread.findById(updatedThread._id)
     )
 
     notifyCommentUpdated({
-        noteId: thread.noteId,
-        threadId: thread._id,
+        noteId: updatedThread.noteId,
+        threadId: updatedThread._id,
         action: "resolved",
         updatedBy: req.user._id
     })
 
     await recordActivity({
-        noteId: thread.noteId,
+        noteId: updatedThread.noteId,
         actor: req.user,
         type: "COMMENT_RESOLVED",
         metadata: {
-            threadId: thread._id
+            threadId: updatedThread._id
         }
     })
 
@@ -410,9 +459,34 @@ const reopenCommentThread = asyncHandler(async (req, res) => {
         throw new ApiError(403, "You do not have permission to reopen this thread")
     }
 
-    if (!isThreadResolved(thread)) {
+    const updatedThread = await CommentThread.findOneAndUpdate(
+        {
+            _id: thread._id,
+            status: "resolved"
+        },
+        {
+            $set: {
+                status: "open",
+                resolved: false,
+                resolvedBy: null,
+                resolvedAt: null
+            }
+        },
+        {
+            returnDocument: "after",
+            runValidators: true
+        }
+    )
+
+    if (!updatedThread) {
+        const currentThread = await CommentThread.findById(thread._id)
+
+        if (!currentThread) {
+            throw new ApiError(404, "Comment thread not found")
+        }
+
         const populatedThread = await populateThreadUsers(
-            CommentThread.findById(thread._id)
+            CommentThread.findById(currentThread._id)
         )
 
         return res
@@ -420,30 +494,23 @@ const reopenCommentThread = asyncHandler(async (req, res) => {
             .json(new ApiResponse(200, populatedThread, "Comment thread is already open"))
     }
 
-    thread.status = "open"
-    thread.resolved = false
-    thread.resolvedBy = null
-    thread.resolvedAt = null
-
-    await thread.save()
-
     const populatedThread = await populateThreadUsers(
-        CommentThread.findById(thread._id)
+        CommentThread.findById(updatedThread._id)
     )
 
     notifyCommentUpdated({
-        noteId: thread.noteId,
-        threadId: thread._id,
+        noteId: updatedThread.noteId,
+        threadId: updatedThread._id,
         action: "reopened",
         updatedBy: req.user._id
     })
 
     await recordActivity({
-        noteId: thread.noteId,
+        noteId: updatedThread.noteId,
         actor: req.user,
         type: "COMMENT_REOPENED",
         metadata: {
-            threadId: thread._id
+            threadId: updatedThread._id
         }
     })
 

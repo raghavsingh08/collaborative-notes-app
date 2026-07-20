@@ -41,6 +41,23 @@ const emitNoteTitleUpdated = ({ noteId, title, updatedBy, updatedAt }) => {
     })
 }
 
+// Activity sockets are invalidation notifications only; clients refetch from MongoDB.
+const emitActivityUpdated = ({ noteId, activityId, type, actorId, createdAt }) => {
+    const io = getSocketServer()
+
+    if (!io || !noteId || !activityId || !type || !actorId || !createdAt) {
+        return
+    }
+
+    io.to(getV2NoteRoom(noteId)).emit("activity:updated", {
+        noteId: String(noteId),
+        activityId: String(activityId),
+        type,
+        actorId: String(actorId),
+        createdAt: createdAt instanceof Date ? createdAt.toISOString() : createdAt
+    })
+}
+
 // Comment sockets are invalidation notifications only; clients refetch from MongoDB.
 const emitCommentUpdate = ({ noteId, threadId, replyId, action, updatedBy }) => {
     const io = getSocketServer()
@@ -64,6 +81,7 @@ const emitCommentUpdate = ({ noteId, threadId, replyId, action, updatedBy }) => 
 }
 
 export {
+    emitActivityUpdated,
     emitCommentUpdate,
     emitNoteRestored,
     emitNoteTitleUpdated,

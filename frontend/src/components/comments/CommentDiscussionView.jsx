@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Check, RotateCcw, Send, ArrowLeft, Trash2 } from 'lucide-react'
 
-const CommentDiscussionView = ({ thread, onBack, onReply, onResolve, onReopen, onDeleteThread, onDeleteReply, currentUser, noteOwner }) => {
+const CommentDiscussionView = ({ thread, onBack, onReply, onResolve, onReopen, onDeleteThread, onDeleteReply, pendingThreadAction, currentUser, noteOwner }) => {
     const [replyText, setReplyText] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const messagesEndRef = useRef(null)
 
     const isResolved = thread.resolved === true || thread.status === 'resolved'
+    const isThreadActionPending = pendingThreadAction === 'resolve' || pendingThreadAction === 'reopen'
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -23,8 +24,10 @@ const CommentDiscussionView = ({ thread, onBack, onReply, onResolve, onReopen, o
 
         try {
             setIsSubmitting(true)
-            await onReply(thread._id, replyText)
-            setReplyText('')
+            const didReply = await onReply(thread._id, replyText)
+            if (didReply) {
+                setReplyText('')
+            }
         } finally {
             setIsSubmitting(false)
         }
@@ -138,19 +141,23 @@ const CommentDiscussionView = ({ thread, onBack, onReply, onResolve, onReopen, o
                     )}
                     {isResolved ? (
                         <button
-                            onClick={() => onReopen(thread._id)}
+                            onClick={() => !isThreadActionPending && onReopen(thread._id)}
+                            disabled={isThreadActionPending}
+                            aria-busy={isThreadActionPending}
                             className="ghost-button"
                             style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
-                            <RotateCcw size={14} /> Reopen
+                            <RotateCcw size={14} /> {pendingThreadAction === 'reopen' ? 'Reopening...' : 'Reopen'}
                         </button>
                     ) : (
                         <button
-                            onClick={() => onResolve(thread._id)}
+                            onClick={() => !isThreadActionPending && onResolve(thread._id)}
+                            disabled={isThreadActionPending}
+                            aria-busy={isThreadActionPending}
                             className="ghost-button"
                             style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--success, #10b981)' }}
                         >
-                            <Check size={14} /> Resolve
+                            <Check size={14} /> {pendingThreadAction === 'resolve' ? 'Resolving...' : 'Resolve'}
                         </button>
                     )}
                 </div>

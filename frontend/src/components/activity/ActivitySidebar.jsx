@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { getNoteActivity } from '../../api/notes.api'
+import socket from '../../api/socket'
 import { Activity, X, User } from 'lucide-react'
 import { formatActivityMessage, formatRelativeTime } from '../../utils/activityFormatter'
 
@@ -32,38 +33,143 @@ const groupActivityEvents = (events) => {
     return grouped;
 };
 
-const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose, isOpen }) => {
+const ActivitySidebar = ({ noteId, currentUser, onClose, isOpen }) => {
     const [events, setEvents] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
+    const eventsRef = useRef(events)
+    const activityListRef = useRef(null)
+    const activeActivityFetchRef = useRef(null)
+    const activeActivityNoteIdRef = useRef(null)
+    const pendingActivityRefreshRef = useRef(null)
+    const isMountedRef = useRef(false)
+    const noteIdRef = useRef(noteId)
+
+    eventsRef.current = events
+    noteIdRef.current = noteId
+
+    const fetchActivity = useCallback((background = false) => {
+        if (!noteId) {
+            return Promise.resolve()
+        }
+
+        if (
+            activeActivityFetchRef.current &&
+            !background &&
+            !pendingActivityRefreshRef.current &&
+            String(activeActivityNoteIdRef.current) === String(noteId)
+        ) {
+            return activeActivityFetchRef.current
+        }
+
+        const queuedRefresh = pendingActivityRefreshRef.current
+
+        if (queuedRefresh && String(queuedRefresh.noteId) === String(noteId)) {
+            queuedRefresh.background = queuedRefresh.background && background
+        } else {
+            pendingActivityRefreshRef.current = { noteId, background }
+        }
+
+        if (activeActivityFetchRef.current) {
+            return activeActivityFetchRef.current
+        }
+
+        const refreshWorker = (async () => {
+            while (pendingActivityRefreshRef.current) {
+                const refresh = pendingActivityRefreshRef.current
+                pendingActivityRefreshRef.current = null
+                activeActivityNoteIdRef.current = refresh.noteId
+
+                const scrollContainer = activityListRef.current
+                const previousScrollTop = refresh.background ? scrollContainer?.scrollTop : null
+                const canApplyResult = () => (
+                    isMountedRef.current &&
+                    String(noteIdRef.current) === String(refresh.noteId)
+                )
+
+                try {
+                    if (canApplyResult()) {
+                        if (!refresh.background && eventsRef.current.length === 0) {
+                            setIsLoading(true)
+                        }
+                        setError(null)
+                    }
+
+                    const res = await getNoteActivity(refresh.noteId)
+
+                    if (!canApplyResult()) {
+                        continue
+                    }
+
+                    let extractedEvents = []
+                    if (Array.isArray(res.data?.data)) {
+                        extractedEvents = res.data.data
+                    } else if (Array.isArray(res.data?.events)) {
+                        extractedEvents = res.data.events
+                    } else if (Array.isArray(res.data)) {
+                        extractedEvents = res.data
+                    }
+
+                    setEvents(extractedEvents)
+
+                    if (refresh.background && scrollContainer && previousScrollTop !== null) {
+                        requestAnimationFrame(() => {
+                            if (canApplyResult()) {
+                                scrollContainer.scrollTop = previousScrollTop
+                            }
+                        })
+                    }
+                } catch (err) {
+                    if (canApplyResult()) {
+                        console.error("Failed to fetch activity:", err)
+                        setError("Failed to load activity timeline.")
+                    }
+                } finally {
+                    if (canApplyResult()) {
+                        setIsLoading(false)
+                    }
+                }
+            }
+        })()
+
+        activeActivityFetchRef.current = refreshWorker
+        refreshWorker.finally(() => {
+            if (activeActivityFetchRef.current === refreshWorker) {
+                activeActivityFetchRef.current = null
+                activeActivityNoteIdRef.current = null
+            }
+        })
+
+        return refreshWorker
+    }, [noteId])
 
     useEffect(() => {
-        const fetchActivity = async () => {
-            try {
-                if (events.length === 0) {
-                    setIsLoading(true)
-                }
-                const res = await getNoteActivity(noteId)
-                
-                let extractedEvents = []
-                if (Array.isArray(res.data?.data)) {
-                    extractedEvents = res.data.data
-                } else if (Array.isArray(res.data?.events)) {
-                    extractedEvents = res.data.events
-                } else if (Array.isArray(res.data)) {
-                    extractedEvents = res.data
-                }
-                
-                setEvents(extractedEvents)
-            } catch (err) {
-                console.error("Failed to fetch activity:", err)
-                setError("Failed to load activity timeline.")
-            } finally {
-                setIsLoading(false)
-            }
+        isMountedRef.current = true
+
+        return () => {
+            isMountedRef.current = false
         }
+    }, [])
+
+    useEffect(() => {
+        if (!noteId) return undefined
+
+        const handleActivityUpdated = (payload) => {
+            if (String(payload?.noteId) !== String(noteId)) return
+
+            fetchActivity(true)
+        }
+
+        socket.on('activity:updated', handleActivityUpdated)
+
+        return () => {
+            socket.off('activity:updated', handleActivityUpdated)
+        }
+    }, [noteId, fetchActivity])
+
+    useEffect(() => {
         fetchActivity()
-    }, [noteId, refreshTrigger])
+    }, [fetchActivity])
 
     const groupedEvents = groupActivityEvents(events);
     if (!isOpen) return null;
@@ -87,7 +193,7 @@ const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose, isOpen 
                 </button>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px 16px' }}>
+            <div ref={activityListRef} style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px 16px' }}>
                 {isLoading && <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Loading activity...</p>}
                 {error && <p style={{ fontSize: '13px', color: 'var(--danger, #ef4444)' }}>{error}</p>}
                 
@@ -99,7 +205,7 @@ const ActivitySidebar = ({ noteId, currentUser, refreshTrigger, onClose, isOpen 
                     </div>
                 )}
 
-                {!isLoading && !error && groupedEvents.map((event, index) => (
+                {!isLoading && groupedEvents.map((event, index) => (
                     <div key={event._id || index} style={{ 
                         display: 'flex', 
                         gap: '12px', 

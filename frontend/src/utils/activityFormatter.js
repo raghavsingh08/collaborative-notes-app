@@ -27,9 +27,9 @@ export const formatActivityMessage = (event, currentUser) => {
         case 'REPLY_DELETED':
             return { actor: actorName, action: `deleted a reply` };
         case 'COMMENT_RESOLVED':
-            return { actor: actorName, action: `resolved a comment` };
+            return { actor: actorName, action: `resolved a comment thread` };
         case 'COMMENT_REOPENED':
-            return { actor: actorName, action: `reopened a comment` };
+            return { actor: actorName, action: `reopened a comment thread` };
         default:
             return { actor: actorName, action: `performed an action` };
     }

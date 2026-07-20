@@ -16,42 +16,106 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [threadFilter, setThreadFilter] = useState('open')
     const commentsListRef = useRef(null)
+    const pendingThreadActionRef = useRef(null)
+    const [pendingThreadAction, setPendingThreadAction] = useState(null)
+    const activeCommentsFetchRef = useRef(null)
+    const pendingCommentsRefreshRef = useRef(null)
+    const isMountedRef = useRef(false)
+    const noteIdRef = useRef(noteId)
 
-    const fetchComments = useCallback(async (background = false) => {
-        const scrollContainer = commentsListRef.current
-        const previousScrollTop = background ? scrollContainer?.scrollTop : null
+    noteIdRef.current = noteId
 
-        try {
-            if (!background) setIsLoading(true)
-            setError(null)
-            const response = await getComments(noteId)
-            
-            // Normalize common API response shapes into an array
-            let normalized = []
-            if (Array.isArray(response)) {
-                normalized = response
-            } else if (response && typeof response === 'object') {
-                if (Array.isArray(response.data)) normalized = response.data
-                else if (Array.isArray(response.comments)) normalized = response.comments
-                else if (Array.isArray(response.threads)) normalized = response.threads
-                else if (response.data && Array.isArray(response.data.comments)) normalized = response.data.comments
-                else if (response.data && Array.isArray(response.data.threads)) normalized = response.data.threads
-            }
-            
-            setThreads(normalized)
-
-            if (background && scrollContainer && previousScrollTop !== null) {
-                requestAnimationFrame(() => {
-                    scrollContainer.scrollTop = previousScrollTop
-                })
-            }
-        } catch (err) {
-            console.error('Failed to load comments:', err)
-            setError('Failed to load comments')
-        } finally {
-            if (!background) setIsLoading(false)
+    const fetchComments = useCallback((background = false) => {
+        if (!noteId) {
+            return Promise.resolve()
         }
+
+        const queuedRefresh = pendingCommentsRefreshRef.current
+
+        if (queuedRefresh && String(queuedRefresh.noteId) === String(noteId)) {
+            queuedRefresh.background = queuedRefresh.background && background
+        } else {
+            pendingCommentsRefreshRef.current = { noteId, background }
+        }
+
+        if (activeCommentsFetchRef.current) {
+            return activeCommentsFetchRef.current
+        }
+
+        const refreshWorker = (async () => {
+            while (pendingCommentsRefreshRef.current) {
+                const refresh = pendingCommentsRefreshRef.current
+                pendingCommentsRefreshRef.current = null
+
+                const scrollContainer = commentsListRef.current
+                const previousScrollTop = refresh.background ? scrollContainer?.scrollTop : null
+                const canApplyResult = () => (
+                    isMountedRef.current &&
+                    String(noteIdRef.current) === String(refresh.noteId)
+                )
+
+                try {
+                    if (canApplyResult()) {
+                        if (!refresh.background) setIsLoading(true)
+                        setError(null)
+                    }
+
+                    const response = await getComments(refresh.noteId)
+
+                    if (!canApplyResult()) {
+                        continue
+                    }
+
+                    let normalized = []
+                    if (Array.isArray(response)) {
+                        normalized = response
+                    } else if (response && typeof response === 'object') {
+                        if (Array.isArray(response.data)) normalized = response.data
+                        else if (Array.isArray(response.comments)) normalized = response.comments
+                        else if (Array.isArray(response.threads)) normalized = response.threads
+                        else if (response.data && Array.isArray(response.data.comments)) normalized = response.data.comments
+                        else if (response.data && Array.isArray(response.data.threads)) normalized = response.data.threads
+                    }
+
+                    setThreads(normalized)
+
+                    if (refresh.background && scrollContainer && previousScrollTop !== null) {
+                        requestAnimationFrame(() => {
+                            if (canApplyResult()) {
+                                scrollContainer.scrollTop = previousScrollTop
+                            }
+                        })
+                    }
+                } catch (err) {
+                    if (canApplyResult()) {
+                        console.error('Failed to load comments:', err)
+                        setError('Failed to load comments')
+                    }
+                } finally {
+                    if (canApplyResult() && !refresh.background) {
+                        setIsLoading(false)
+                    }
+                }
+            }
+        })()
+
+        activeCommentsFetchRef.current = refreshWorker
+        refreshWorker.finally(() => {
+            if (activeCommentsFetchRef.current === refreshWorker) {
+                activeCommentsFetchRef.current = null
+            }
+        })
+
+        return refreshWorker
     }, [noteId])
+
+    useEffect(() => {
+        isMountedRef.current = true
+
+        return () => {
+            isMountedRef.current = false
+        }
+    }, [])
 
     useEffect(() => {
         if (!noteId) return undefined
@@ -94,7 +158,6 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
             if (onCommentCreated) {
                 onCommentCreated(anchorId)
             }
-            await fetchComments(true)
         } catch (err) {
             console.error('Failed to create comment:', err)
             alert('Failed to create comment')
@@ -123,30 +186,55 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     const handleReply = async (threadId, content) => {
         try {
             await replyToComment(threadId, content)
+            return true
         } catch (err) {
             console.error('Failed to reply:', err)
-            alert('Failed to post reply')
+            if (err?.response?.data?.code === 'COMMENT_THREAD_RESOLVED') {
+                await fetchComments(true)
+                alert('This thread was resolved before your reply could be posted.')
+            } else {
+                alert('Failed to post reply')
+            }
+            return false
         }
     }
 
-    const handleResolve = async (threadId) => {
+    const handleThreadStatusAction = async (threadId, action, request, failureMessage) => {
+        if (pendingThreadActionRef.current?.threadId === threadId) return
+
+        const pendingAction = { threadId, action }
+        pendingThreadActionRef.current = pendingAction
+        setPendingThreadAction(pendingAction)
+
         try {
-            await resolveComment(threadId)
-            await fetchComments(true)
+            await request(threadId)
         } catch (err) {
-            console.error('Failed to resolve:', err)
-            alert('Failed to resolve thread')
+            console.error('Failed to ' + action + ':', err)
+            alert(failureMessage)
+        } finally {
+            if (pendingThreadActionRef.current === pendingAction) {
+                pendingThreadActionRef.current = null
+                setPendingThreadAction(null)
+            }
         }
     }
 
-    const handleReopen = async (threadId) => {
-        try {
-            await reopenComment(threadId)
-            await fetchComments(true)
-        } catch (err) {
-            console.error('Failed to reopen:', err)
-            alert('Failed to reopen thread')
-        }
+    const handleResolve = (threadId) => {
+        return handleThreadStatusAction(
+            threadId,
+            'resolve',
+            resolveComment,
+            'Failed to resolve thread'
+        )
+    }
+
+    const handleReopen = (threadId) => {
+        return handleThreadStatusAction(
+            threadId,
+            'reopen',
+            reopenComment,
+            'Failed to reopen thread'
+        )
     }
 
     const handleDeleteThread = async (threadId) => {
@@ -158,7 +246,6 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                 onCommentDeleted(thread.anchorId)
             }
             setActiveThreadId(null)
-            await fetchComments(true)
         } catch (err) {
             console.error('Failed to delete thread:', err)
             alert('Failed to delete thread')
@@ -169,7 +256,6 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
         if (!window.confirm("Are you sure you want to delete this reply?")) return
         try {
             await deleteCommentReply(threadId, replyId)
-            await fetchComments(true)
         } catch (err) {
             console.error('Failed to delete reply:', err)
             alert('Failed to delete reply')
@@ -314,6 +400,9 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                             onReopen={handleReopen}
                             onDeleteThread={handleDeleteThread}
                             onDeleteReply={handleDeleteReply}
+                            pendingThreadAction={pendingThreadAction?.threadId === activeThread._id
+                                ? pendingThreadAction.action
+                                : null}
                             currentUser={currentUser}
                             noteOwner={noteOwner}
                         />

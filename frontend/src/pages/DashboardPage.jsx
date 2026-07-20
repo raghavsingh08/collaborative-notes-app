@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { createNote, getNotes, getSharedUsers, deleteNote, removeSharedUser } from "../api/notes.api"
+import { createNote, getNotes, deleteNote, removeSharedUser } from "../api/notes.api"
 import { useAuth } from "../context/AuthContext"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
 import { AvatarStack, Badge, CollaboratorAvatarGroup, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
@@ -15,16 +15,12 @@ const getNotesFromResponse = (response) => {
     return response?.data?.notes || response?.data?.data?.notes || response?.data?.data || response?.data || []
 }
 
-const getSharedUsersFromResponse = (response) => {
-    return response?.data?.users || response?.data?.data?.users || response?.data?.data || response?.data || []
-}
-
 const getId = (value) => {
     return value?._id || value?.id || value
 }
 
 const getCollaboratorsFromNote = (note) => {
-    const collaborators = note?.sharedWith || note?.collaborators || note?.sharedUsers || []
+    const collaborators = note?.sharedWith || []
 
     return Array.isArray(collaborators)
         ? collaborators.filter((collaborator) => collaborator && typeof collaborator === "object")
@@ -101,7 +97,6 @@ const DashboardPage = () => {
     const { user } = useAuth()
     const presenceByNoteId = useWorkspacePresence()
     const [notes, setNotes] = useState([])
-    const [noteCollaborators, setNoteCollaborators] = useState({})
     const [collaborationNote, setCollaborationNote] = useState(null)
     const [title, setTitle] = useState("")
     const [query, setQuery] = useState("")
@@ -144,33 +139,6 @@ const DashboardPage = () => {
         return getId(note.owner || note.ownerId || note.createdBy) === getId(user)
     }, [user])
 
-    const loadOwnedCollaborators = useCallback(async (nextNotes) => {
-        const ownedNotesWithShares = nextNotes.filter((note) => {
-            const sharedWith = note?.sharedWith || []
-            return isOwnedNote(note) && Array.isArray(sharedWith) && sharedWith.length > 0
-        })
-
-        if (ownedNotesWithShares.length === 0) return
-
-        const collaboratorEntries = await Promise.all(
-            ownedNotesWithShares.map(async (note) => {
-                const noteId = note._id || note.id
-
-                try {
-                    const response = await getSharedUsers(noteId)
-                    return [noteId, getSharedUsersFromResponse(response)]
-                } catch {
-                    return [noteId, getCollaboratorsFromNote(note)]
-                }
-            })
-        )
-
-        setNoteCollaborators((current) => ({
-            ...current,
-            ...Object.fromEntries(collaboratorEntries)
-        }))
-    }, [isOwnedNote])
-
     const fetchNotes = useCallback(async () => {
         setIsLoading(true)
         setError("")
@@ -180,13 +148,12 @@ const DashboardPage = () => {
             const fetchedNotes = getNotesFromResponse(response)
 
             setNotes(fetchedNotes)
-            await loadOwnedCollaborators(fetchedNotes)
         } catch {
             setError("Unable to load notes.")
         } finally {
             setIsLoading(false)
         }
-    }, [loadOwnedCollaborators])
+    }, [])
 
     useEffect(() => {
         fetchNotes()
@@ -222,10 +189,7 @@ const DashboardPage = () => {
         createNoteFromTitle("Untitled document")
     }
 
-    const getCollaboratorsForNote = (note) => {
-        const noteId = note._id || note.id
-        return noteCollaborators[noteId] || getCollaboratorsFromNote(note)
-    }
+    const getCollaboratorsForNote = (note) => getCollaboratorsFromNote(note)
 
     const getActiveUsersForNote = (note) => {
         return presenceByNoteId[String(note._id || note.id)] || []

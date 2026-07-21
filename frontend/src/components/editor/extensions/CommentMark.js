@@ -48,18 +48,26 @@ export const CommentMark = Mark.create({
       setCommentMark: anchorId => ({ commands }) => {
         return commands.setMark(this.name, { anchorId });
       },
-      unsetCommentMark: anchorId => ({ tr, dispatch }) => {
-         if (dispatch) {
-            tr.doc.descendants((node, pos) => {
-              if (node.isText && node.marks) {
-                const mark = node.marks.find(m => m.type.name === this.name && m.attrs.anchorId === anchorId);
-                if (mark) {
-                  tr.removeMark(pos, pos + node.nodeSize, mark);
-                }
-              }
-            });
+      unsetCommentMark: (anchorId, { addToHistory = true } = {}) => ({ tr }) => {
+         let removed = false;
+
+         tr.doc.descendants((node, pos) => {
+           if (node.isText && node.marks) {
+             const mark = node.marks.find(m => m.type.name === this.name && m.attrs.anchorId === anchorId);
+             if (mark) {
+               tr.removeMark(pos, pos + node.nodeSize, mark);
+               removed = true;
+             }
+           }
+         });
+
+         if (!removed) {
+           tr.setMeta('preventDispatch', true);
+         } else if (!addToHistory) {
+           tr.setMeta('addToHistory', false);
          }
-         return true;
+
+         return removed;
       },
     };
   },

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { deleteNote, getNoteById, updateNote } from "../api/notes.api"
+import { getComments } from "../api/comments.api"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
 import { EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
 import {
@@ -23,7 +24,7 @@ import VersionHistoryPanel from "../components/versions/VersionHistoryPanel"
 import ActivitySidebar from "../components/activity/ActivitySidebar"
 import { History, Activity, MessageSquare } from "lucide-react"
 
-const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onSelectionChange, onCommentClicked }) => {
+const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onEditorReady, onSelectionChange, onCommentClicked }) => {
     const { ydoc, awareness, syncStatus } = useCollaboration()
     
     // Key the editor by the unique Y.Doc GUID to force a complete React unmount/remount 
@@ -40,6 +41,7 @@ const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, on
             hasLoaded={hasLoaded}
             onUpdate={onUpdate}
             syncStatus={syncStatus}
+            onEditorReady={onEditorReady}
             onSelectionChange={onSelectionChange}
             onCommentClicked={onCommentClicked}
         />
@@ -49,6 +51,19 @@ const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, on
 const getNoteFromResponse = (response) => {
     return response?.data?.note || response?.data?.data?.note || response?.data?.data || response?.data
 }
+
+const getCompleteCommentThreads = (response) => (
+    Array.isArray(response?.data) ? response.data : null
+)
+
+const getThreadAnchorIds = (threads) => new Set(
+    threads
+        .map((thread) => thread?.anchorId)
+        .filter((anchorId) => typeof anchorId === "string" && anchorId.trim())
+        .map((anchorId) => anchorId.trim())
+)
+
+const COMMENT_ANCHOR_VALIDITY_ACTIONS = new Set(["created", "thread_deleted"])
 
 const saveStatusClassMap = {
     "Saved": "saved",
@@ -426,7 +441,25 @@ const NoteEditorV2Page = () => {
     // Step 17D Integration State
     const [activeThreadId, setActiveThreadId] = useState(null)
     const [editorSelection, setEditorSelection] = useState(null)
+    const [editorReadyVersion, setEditorReadyVersion] = useState(0)
     const editorRef = useRef(null)
+    const commentAnchorCleanupNoteIdRef = useRef(String(noteId))
+    const pendingDeletedCommentAnchorsRef = useRef(null)
+    const commentAnchorReconciliationRef = useRef({
+        noteId: String(noteId),
+        generation: 0,
+        editorGeneration: 0,
+        editorReady: false,
+        readyEditor: null,
+        invalidationGeneration: 0,
+        completed: false,
+        active: false,
+        retryPending: false,
+        failureRetryCount: 0,
+        localPendingAnchorIds: new Set()
+    })
+    const requestCommentAnchorReconciliationRef = useRef(null)
+    commentAnchorCleanupNoteIdRef.current = String(noteId)
 
     // Step 18 Integration State
     const [isHistoryOpen, setIsHistoryOpen] = useState(false)
@@ -527,6 +560,159 @@ const NoteEditorV2Page = () => {
             contentAutosaveTimerRef.current = null
         }
     }, [])
+
+    const requestCommentAnchorReconciliation = useCallback(async () => {
+        const reconciliation = commentAnchorReconciliationRef.current
+        const currentNoteId = String(noteId)
+        const currentGeneration = reconciliation.generation
+        const currentEditorGeneration = reconciliation.editorGeneration
+        const isActiveNoteReconciliation = () => (
+            isMountedRef.current &&
+            reconciliation.noteId === String(noteIdRef.current) &&
+            reconciliation.noteId === commentAnchorCleanupNoteIdRef.current &&
+            reconciliation.editorReady &&
+            !reconciliation.completed
+        )
+        const isCurrentReconciliation = () => (
+            isActiveNoteReconciliation() &&
+            reconciliation.noteId === currentNoteId &&
+            reconciliation.generation === currentGeneration &&
+            reconciliation.editorGeneration === currentEditorGeneration
+        )
+
+        if (!isCurrentReconciliation()) return
+
+        if (reconciliation.active) {
+            reconciliation.retryPending = true
+            return
+        }
+
+        const editor = editorRef.current?.getEditor?.()
+        if (!editor || editor.isDestroyed) return
+
+        reconciliation.active = true
+        reconciliation.retryPending = false
+        const invalidationGeneration = reconciliation.invalidationGeneration
+
+        try {
+            const response = await getComments(currentNoteId)
+            const threads = getCompleteCommentThreads(response)
+
+            if (!Array.isArray(threads)) {
+                throw new Error("Comment list response was not complete")
+            }
+
+            if (!isCurrentReconciliation()) return
+
+            if (reconciliation.invalidationGeneration !== invalidationGeneration) {
+                reconciliation.retryPending = true
+                return
+            }
+
+            const validAnchorIds = getThreadAnchorIds(threads)
+            validAnchorIds.forEach((anchorId) => {
+                reconciliation.localPendingAnchorIds.delete(anchorId)
+            })
+
+            const currentMarkIds = editorRef.current?.getCommentMarkAnchorIds?.()
+            if (!Array.isArray(currentMarkIds)) return
+
+            currentMarkIds
+                .filter((anchorId) => (
+                    !validAnchorIds.has(anchorId) &&
+                    !reconciliation.localPendingAnchorIds.has(anchorId)
+                ))
+                .forEach((anchorId) => {
+                    editorRef.current?.unsetCommentMark?.(anchorId, { addToHistory: false })
+                })
+
+            reconciliation.completed = true
+            reconciliation.failureRetryCount = 0
+        } catch (err) {
+            if (isCurrentReconciliation()) {
+                console.error("Failed to reconcile comment anchors:", err)
+
+                if (reconciliation.failureRetryCount < 1) {
+                    reconciliation.failureRetryCount += 1
+                    reconciliation.retryPending = true
+                }
+            }
+        } finally {
+            reconciliation.active = false
+
+            if (reconciliation.retryPending && isActiveNoteReconciliation()) {
+                reconciliation.retryPending = false
+                Promise.resolve().then(() => {
+                    requestCommentAnchorReconciliationRef.current?.()
+                })
+            }
+        }
+    }, [noteId])
+
+    requestCommentAnchorReconciliationRef.current = requestCommentAnchorReconciliation
+
+    const flushPendingDeletedCommentAnchors = useCallback(() => {
+        const pending = pendingDeletedCommentAnchorsRef.current
+        if (
+            !pending ||
+            pending.noteId !== String(noteId) ||
+            pending.noteId !== commentAnchorCleanupNoteIdRef.current
+        ) {
+            return
+        }
+
+        const editor = editorRef.current?.getEditor?.()
+        if (!editor || editor.isDestroyed) return
+
+        pending.anchorIds.forEach((anchorId) => {
+            editorRef.current?.unsetCommentMark?.(anchorId)
+        })
+        pending.anchorIds.clear()
+    }, [noteId])
+
+    const handleEditorReady = useCallback(() => {
+        const reconciliation = commentAnchorReconciliationRef.current
+        const currentNoteId = String(noteId)
+        const editor = editorRef.current?.getEditor?.()
+
+        const isDuplicateReadySignal = (
+            reconciliation.editorReady &&
+            reconciliation.readyEditor === editor
+        )
+
+        if (
+            reconciliation.noteId !== currentNoteId ||
+            !editor ||
+            editor.isDestroyed ||
+            (isDuplicateReadySignal && (reconciliation.completed || reconciliation.active))
+        ) {
+            return
+        }
+
+        flushPendingDeletedCommentAnchors()
+        reconciliation.editorReady = true
+        reconciliation.readyEditor = editor
+        reconciliation.editorGeneration += 1
+        reconciliation.completed = false
+        reconciliation.failureRetryCount = 0
+        setEditorReadyVersion((version) => version + 1)
+        requestCommentAnchorReconciliationRef.current?.()
+    }, [flushPendingDeletedCommentAnchors, noteId])
+
+    const registerPendingCommentAnchor = useCallback((anchorId) => {
+        const normalizedAnchorId = typeof anchorId === "string" ? anchorId.trim() : ""
+        const reconciliation = commentAnchorReconciliationRef.current
+        const currentNoteId = String(noteId)
+
+        if (!normalizedAnchorId || reconciliation.noteId !== currentNoteId) return
+
+        reconciliation.localPendingAnchorIds.add(normalizedAnchorId)
+        reconciliation.invalidationGeneration += 1
+
+        if (!reconciliation.completed) {
+            requestCommentAnchorReconciliationRef.current?.()
+        }
+    }, [noteId])
 
     const isTitleCoveredByManualContentSave = useCallback((targetNoteId, nextTitle) => {
         const targetKey = String(targetNoteId)
@@ -770,6 +956,21 @@ const NoteEditorV2Page = () => {
 
         noteIdRef.current = currentNoteId
         hasLoadedNote.current = false
+        const reconciliation = commentAnchorReconciliationRef.current
+
+        if (reconciliation.noteId !== currentNoteId) {
+            reconciliation.noteId = currentNoteId
+            reconciliation.generation += 1
+            reconciliation.editorGeneration = 0
+            reconciliation.editorReady = false
+            reconciliation.readyEditor = null
+            reconciliation.invalidationGeneration = 0
+            reconciliation.completed = false
+            reconciliation.retryPending = Boolean(reconciliation.active)
+            reconciliation.failureRetryCount = 0
+            reconciliation.localPendingAnchorIds.clear()
+        }
+
         clearTitleAutosaveTimer()
         clearContentAutosaveTimer()
         titleSaveQueueRef.current.pendingByNoteId.delete(currentNoteId)
@@ -891,6 +1092,60 @@ const NoteEditorV2Page = () => {
             contentController.recoveryTimer = null
         }
     }, [clearContentAutosaveTimer, clearTitleAutosaveTimer])
+    useEffect(() => {
+        const currentNoteId = String(noteId)
+        const pending = {
+            noteId: currentNoteId,
+            anchorIds: new Set()
+        }
+
+        pendingDeletedCommentAnchorsRef.current = pending
+
+        const handleCommentsUpdated = (payload = {}) => {
+            if (
+                currentNoteId !== commentAnchorCleanupNoteIdRef.current ||
+                String(payload?.noteId) !== currentNoteId
+            ) {
+                return
+            }
+
+            if (COMMENT_ANCHOR_VALIDITY_ACTIONS.has(payload?.action)) {
+                const reconciliation = commentAnchorReconciliationRef.current
+
+                if (reconciliation.noteId === currentNoteId) {
+                    reconciliation.invalidationGeneration += 1
+
+                    if (!reconciliation.completed) {
+                        requestCommentAnchorReconciliationRef.current?.()
+                    }
+                }
+            }
+
+            if (payload?.action !== "thread_deleted" || !payload?.anchorId) {
+                return
+            }
+
+            pending.anchorIds.add(String(payload.anchorId))
+            flushPendingDeletedCommentAnchors()
+        }
+
+        socket.on("comments:updated", handleCommentsUpdated)
+        flushPendingDeletedCommentAnchors()
+
+        return () => {
+            socket.off("comments:updated", handleCommentsUpdated)
+            pending.anchorIds.clear()
+
+            if (pendingDeletedCommentAnchorsRef.current === pending) {
+                pendingDeletedCommentAnchorsRef.current = null
+            }
+        }
+    }, [flushPendingDeletedCommentAnchors, noteId])
+
+    useEffect(() => {
+        flushPendingDeletedCommentAnchors()
+    }, [editorReadyVersion, flushPendingDeletedCommentAnchors])
+
     useEffect(() => {
         const currentNoteId = String(noteId)
         const currentGeneration = contentSaveControllerRef.current.generation
@@ -2060,6 +2315,7 @@ const NoteEditorV2Page = () => {
                             initialContentJson={contentJson}
                             hasLoaded={hasLoadedNote.current}
                             editorRef={editorRef}
+                            onEditorReady={handleEditorReady}
                             onSelectionChange={setEditorSelection}
                             onCommentClicked={(anchorId) => {
                                 setIsHistoryOpen(false)
@@ -2107,6 +2363,7 @@ const NoteEditorV2Page = () => {
                             }}
                             editorSelection={editorSelection}
                             onCommentCreated={(anchorId) => {
+                                registerPendingCommentAnchor(anchorId)
                                 if (editorRef.current) {
                                     editorRef.current.setCommentMark(anchorId)
                                 }

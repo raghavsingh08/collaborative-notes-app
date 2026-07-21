@@ -6,7 +6,7 @@ import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import EditorToolbar from './EditorToolbar';
 import { CommentMark } from './extensions/CommentMark';
 
-const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate, hasLoaded, ydoc, awareness, syncStatus, onSelectionChange, onCommentClicked }, ref) => {
+const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate, hasLoaded, ydoc, awareness, syncStatus, onEditorReady, onSelectionChange, onCommentClicked }, ref) => {
     const hasInitializedYdoc = useRef(false);
 
     const editor = useEditor({
@@ -62,8 +62,30 @@ const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate,
         setCommentMark: (anchorId) => {
             if (editor) editor.commands.setCommentMark(anchorId)
         },
-        unsetCommentMark: (anchorId) => {
-            if (editor) editor.commands.unsetCommentMark(anchorId)
+        unsetCommentMark: (anchorId, options) => {
+            if (editor) editor.commands.unsetCommentMark(anchorId, options)
+        },
+        getCommentMarkAnchorIds: () => {
+            if (!editor || editor.isDestroyed) return []
+
+            const anchorIds = new Set()
+            editor.state.doc.descendants((node) => {
+                if (!node.isText || !node.marks) return
+
+                node.marks.forEach((mark) => {
+                    if (mark.type.name !== 'commentMark') return
+
+                    const anchorId = typeof mark.attrs.anchorId === 'string'
+                        ? mark.attrs.anchorId.trim()
+                        : ''
+
+                    if (anchorId) {
+                        anchorIds.add(anchorId)
+                    }
+                })
+            })
+
+            return Array.from(anchorIds)
         },
         scrollToComment: (anchorId) => {
             if (!editor) return
@@ -131,6 +153,11 @@ const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate,
         }
     }, [editor, hasLoaded, initialContent, initialContentJson, ydoc, syncStatus]);
 
+    useEffect(() => {
+        if (editor && hasLoaded && syncStatus?.isComplete && hasInitializedYdoc.current && !editor.isDestroyed) {
+            onEditorReady?.()
+        }
+    }, [editor, hasLoaded, onEditorReady, syncStatus?.isComplete])
     useEffect(() => {
         if (!editor || !editor.view.dom) return;
         

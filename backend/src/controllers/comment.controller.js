@@ -38,11 +38,12 @@ const normalizeText = (value) => {
     return typeof value === "string" ? value.trim() : ""
 }
 
-const notifyCommentUpdated = ({ noteId, threadId, replyId, action, updatedBy }) => {
+const notifyCommentUpdated = ({ noteId, threadId, replyId, anchorId, action, updatedBy }) => {
     emitCommentUpdate({
         noteId,
         threadId,
         replyId,
+        anchorId,
         action,
         updatedBy
     })
@@ -535,6 +536,7 @@ const deleteCommentThread = asyncHandler(async (req, res) => {
     notifyCommentUpdated({
         noteId,
         threadId: thread._id,
+        anchorId: thread.anchorId,
         action: "thread_deleted",
         updatedBy: req.user._id
     })

@@ -59,7 +59,7 @@ const emitActivityUpdated = ({ noteId, activityId, type, actorId, createdAt }) =
 }
 
 // Comment sockets are invalidation notifications only; clients refetch from MongoDB.
-const emitCommentUpdate = ({ noteId, threadId, replyId, action, updatedBy }) => {
+const emitCommentUpdate = ({ noteId, threadId, replyId, anchorId, action, updatedBy }) => {
     const io = getSocketServer()
 
     if (!io || !noteId || !threadId) {
@@ -75,6 +75,10 @@ const emitCommentUpdate = ({ noteId, threadId, replyId, action, updatedBy }) => 
 
     if (replyId) {
         payload.replyId = String(replyId)
+    }
+
+    if (anchorId) {
+        payload.anchorId = String(anchorId)
     }
 
     io.to(getV2NoteRoom(noteId)).emit("comments:updated", payload)

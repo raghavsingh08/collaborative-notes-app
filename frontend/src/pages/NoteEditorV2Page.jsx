@@ -17,6 +17,7 @@ import { useAuth } from "../context/AuthContext"
 import socket from "../api/socket"
 import useNoteSocketV2 from "../hooks/useNoteSocketV2"
 import usePageTitle from "../hooks/usePageTitle"
+import { useCommandPalette, useCommandRegistration } from "../hooks/useCommandPalette"
 import TipTapEditor from '../components/editor/TipTapEditor'
 import { CollaborationProvider, useCollaboration } from "../collaboration/CollaborationProvider"
 import CommentsSidebar from "../components/comments/CommentsSidebar"
@@ -436,6 +437,7 @@ const NoteEditorV2Page = () => {
     const [loadError, setLoadError] = useState(false)
     const [isShareOpen, setIsShareOpen] = useState(false)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+    const [isCommentDeleteConfirmOpen, setIsCommentDeleteConfirmOpen] = useState(false)
     const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false)
     
     // Step 17D Integration State
@@ -533,6 +535,7 @@ const NoteEditorV2Page = () => {
     usePageTitle(title || "Editor")
 
     const { socketError, isConnected, isReconnecting } = useNoteSocketV2(noteId)
+    const { setBlockingDialog } = useCommandPalette()
 
     const saveStatus = getCombinedSaveStatus({
         isTitleSaving,
@@ -1877,6 +1880,141 @@ const NoteEditorV2Page = () => {
         }
     }, [flushBeforeNavigation, navigate])
 
+    const openCommentsPanel = useCallback(() => {
+        setIsCommentsOpen(true)
+        setIsHistoryOpen(false)
+        setIsActivityOpen(false)
+    }, [])
+
+    const openActivityPanel = useCallback(() => {
+        setIsActivityOpen(true)
+        setIsHistoryOpen(false)
+        setIsCommentsOpen(false)
+    }, [])
+
+    const openVersionHistoryPanel = useCallback(() => {
+        setIsHistoryOpen(true)
+        setIsActivityOpen(false)
+        setIsCommentsOpen(false)
+    }, [])
+
+    const closeOpenPanel = useCallback(() => {
+        setIsCommentsOpen(false)
+        setIsHistoryOpen(false)
+        setIsActivityOpen(false)
+    }, [])
+
+    const openCollaborators = useCallback(() => {
+        setIsShareOpen(true)
+    }, [])
+
+    useEffect(() => {
+        setBlockingDialog(isShareOpen || isDeleteConfirmOpen || isCommentDeleteConfirmOpen)
+
+        return () => setBlockingDialog(false)
+    }, [isCommentDeleteConfirmOpen, isDeleteConfirmOpen, isShareOpen, setBlockingDialog])
+
+    const commandPaletteCommands = useMemo(() => {
+        const isEditorReady = hasLoadedNote.current && !isLoading && !loadError && Boolean(noteOwner)
+        if (!isEditorReady) return []
+
+        return [
+            {
+                id: "editor.go-to-dashboard",
+                label: "Go to Dashboard",
+                keywords: ["home", "workspace", "back"],
+                group: "Navigation",
+                icon: IconArrowLeft,
+                enabled: !isNavigatingAfterFlush,
+                execute: async () => (await navigateAfterFlush("/dashboard")) === "idle"
+            },
+            {
+                id: "editor.open-settings",
+                label: "Open Settings",
+                keywords: ["preferences", "account"],
+                group: "Navigation",
+                icon: IconSettings,
+                enabled: !isNavigatingAfterFlush,
+                execute: async () => (await navigateAfterFlush("/settings")) === "idle"
+            },
+            {
+                id: "editor.save-note",
+                label: "Save Note",
+                keywords: ["save", "checkpoint"],
+                group: "Note",
+                icon: IconSave,
+                closeOnSuccess: true,
+                execute: () => handleSave("manual")
+            },
+            {
+                id: "editor.open-comments",
+                label: "Open Comments",
+                keywords: ["discussion", "threads"],
+                group: "Panels",
+                icon: MessageSquare,
+                closeBeforeExecute: true,
+                execute: openCommentsPanel
+            },
+            {
+                id: "editor.open-activity",
+                label: "Open Activity",
+                keywords: ["timeline", "audit"],
+                group: "Panels",
+                icon: Activity,
+                closeBeforeExecute: true,
+                execute: openActivityPanel
+            },
+            {
+                id: "editor.open-version-history",
+                label: "Open Version History",
+                keywords: ["history", "versions"],
+                group: "Panels",
+                icon: History,
+                closeBeforeExecute: true,
+                execute: openVersionHistoryPanel
+            },
+            {
+                id: "editor.close-open-panel",
+                label: "Close Open Panel",
+                keywords: ["dismiss", "close", "sidebar"],
+                group: "Panels",
+                icon: IconClose,
+                hidden: !isCommentsOpen && !isActivityOpen && !isHistoryOpen,
+                closeBeforeExecute: true,
+                execute: closeOpenPanel
+            },
+            {
+                id: isOwner ? "editor.manage-collaborators" : "editor.view-collaborators",
+                label: isOwner ? "Manage Collaborators" : "View Collaborators",
+                keywords: isOwner
+                    ? ["share", "invite", "access", "people"]
+                    : ["collaborators", "people", "access"],
+                group: "Note",
+                icon: IconUsers,
+                closeBeforeExecute: true,
+                execute: openCollaborators
+            }
+        ]
+    }, [
+        closeOpenPanel,
+        handleSave,
+        isActivityOpen,
+        isCommentsOpen,
+        isHistoryOpen,
+        isLoading,
+        isNavigatingAfterFlush,
+        isOwner,
+        loadError,
+        navigateAfterFlush,
+        noteOwner,
+        openActivityPanel,
+        openCollaborators,
+        openCommentsPanel,
+        openVersionHistoryPanel
+    ])
+
+    useCommandRegistration(`editor:${noteId}`, commandPaletteCommands)
+
     const flushForPageLifecycle = useCallback(() => {
         if (!isMountedRef.current || !hasLoadedNote.current) return
 
@@ -2149,11 +2287,7 @@ const NoteEditorV2Page = () => {
                         <button
                             className="ghost-button collaboration-entry-button hide-on-medium"
                             type="button"
-                            onClick={() => {
-                                setIsHistoryOpen(true)
-                                setIsActivityOpen(false)
-                                setIsCommentsOpen(false)
-                            }}
+                            onClick={openVersionHistoryPanel}
                         >
                             <History size={15} />
                             <span className="desktop-label">History</span>
@@ -2162,11 +2296,7 @@ const NoteEditorV2Page = () => {
                         <button
                             className="ghost-button collaboration-entry-button hide-on-medium"
                             type="button"
-                            onClick={() => {
-                                setIsActivityOpen(true)
-                                setIsHistoryOpen(false)
-                                setIsCommentsOpen(false)
-                            }}
+                            onClick={openActivityPanel}
                         >
                             <Activity size={15} />
                             <span className="desktop-label">Activity</span>
@@ -2175,7 +2305,7 @@ const NoteEditorV2Page = () => {
                         <button
                             className="ghost-button collaboration-entry-button hide-on-medium"
                             type="button"
-                            onClick={() => setIsShareOpen(true)}
+                            onClick={openCollaborators}
                         >
                             <IconUsers size={15} />
                             <span className="desktop-label">Share</span>
@@ -2209,9 +2339,7 @@ const NoteEditorV2Page = () => {
                                         role="menuitem"
                                         onClick={() => {
                                             setIsEditorMoreOpen(false)
-                                            setIsCommentsOpen(true)
-                                            setIsHistoryOpen(false)
-                                            setIsActivityOpen(false)
+                                            openCommentsPanel()
                                         }}
                                     >
                                         <MessageSquare size={14} />
@@ -2223,9 +2351,7 @@ const NoteEditorV2Page = () => {
                                         role="menuitem"
                                         onClick={() => {
                                             setIsEditorMoreOpen(false)
-                                            setIsHistoryOpen(true)
-                                            setIsActivityOpen(false)
-                                            setIsCommentsOpen(false)
+                                            openVersionHistoryPanel()
                                         }}
                                     >
                                         <History size={14} />
@@ -2237,9 +2363,7 @@ const NoteEditorV2Page = () => {
                                         role="menuitem"
                                         onClick={() => {
                                             setIsEditorMoreOpen(false)
-                                            setIsActivityOpen(true)
-                                            setIsHistoryOpen(false)
-                                            setIsCommentsOpen(false)
+                                            openActivityPanel()
                                         }}
                                     >
                                         <Activity size={14} />
@@ -2251,7 +2375,7 @@ const NoteEditorV2Page = () => {
                                         role="menuitem"
                                         onClick={() => {
                                             setIsEditorMoreOpen(false)
-                                            setIsShareOpen(true)
+                                            openCollaborators()
                                         }}
                                     >
                                         <IconUsers size={14} />
@@ -2375,6 +2499,7 @@ const NoteEditorV2Page = () => {
                             }}
                             isOpen={isCommentsOpen}
                             onClose={() => setIsCommentsOpen(false)}
+                            onDeleteDialogOpenChange={setIsCommentDeleteConfirmOpen}
                         />
                     )}
 

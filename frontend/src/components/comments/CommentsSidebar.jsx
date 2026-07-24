@@ -2,10 +2,11 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { getComments, createComment, replyToComment, resolveComment, reopenComment, deleteCommentThread, deleteCommentReply, markCommentThreadAsRead } from '../../api/comments.api'
 import CommentSummaryCard from './CommentSummaryCard'
 import CommentDiscussionView from './CommentDiscussionView'
+import CommentDeleteConfirmDialog from './CommentDeleteConfirmDialog'
 import { Plus, MessageSquare, X } from 'lucide-react'
 import socket from '../../api/socket'
 
-const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted, isOpen, onClose }) => {
+const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted, isOpen, onClose, onDeleteDialogOpenChange }) => {
     const [threads, setThreads] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -15,6 +16,9 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     const [newCommentText, setNewCommentText] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [threadFilter, setThreadFilter] = useState('open')
+    const [deleteTarget, setDeleteTarget] = useState(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+    const deleteOperationRef = useRef(null)
     const commentsListRef = useRef(null)
     const pendingThreadActionRef = useRef(null)
     const [pendingThreadAction, setPendingThreadAction] = useState(null)
@@ -24,6 +28,21 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     const noteIdRef = useRef(noteId)
 
     noteIdRef.current = noteId
+
+    useEffect(() => {
+        deleteOperationRef.current = null
+        setDeleteTarget(null)
+        setIsDeleting(false)
+    }, [noteId])
+
+    useEffect(() => {
+        onDeleteDialogOpenChange?.(Boolean(deleteTarget))
+    }, [deleteTarget, onDeleteDialogOpenChange])
+
+    useEffect(() => () => {
+        deleteOperationRef.current = null
+        onDeleteDialogOpenChange?.(false)
+    }, [onDeleteDialogOpenChange])
 
     const fetchComments = useCallback((background = false) => {
         if (!noteId) {
@@ -237,30 +256,64 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
         )
     }
 
-    const handleDeleteThread = async (threadId) => {
-        if (!window.confirm("Are you sure you want to delete this entire thread?")) return
-        try {
-            const thread = safeThreads.find(t => t._id === threadId)
-            await deleteCommentThread(threadId)
-            if (thread && thread.anchorId && onCommentDeleted) {
-                onCommentDeleted(thread.anchorId)
-            }
-            setActiveThreadId(null)
-        } catch (err) {
-            console.error('Failed to delete thread:', err)
-            alert('Failed to delete thread')
-        }
-    }
+    const openThreadDeleteConfirmation = useCallback((threadId) => {
+        if (isDeleting || deleteOperationRef.current) return
+        setDeleteTarget({ type: 'thread', threadId })
+    }, [isDeleting])
 
-    const handleDeleteReply = async (threadId, replyId) => {
-        if (!window.confirm("Are you sure you want to delete this reply?")) return
+    const openReplyDeleteConfirmation = useCallback((threadId, replyId) => {
+        if (isDeleting || deleteOperationRef.current) return
+        setDeleteTarget({ type: 'reply', threadId, replyId })
+    }, [isDeleting])
+
+    const closeDeleteConfirmation = useCallback(() => {
+        if (isDeleting) return
+        setDeleteTarget(null)
+    }, [isDeleting])
+
+    const handleConfirmedDelete = useCallback(async () => {
+        const target = deleteTarget
+        if (!target || deleteOperationRef.current) return
+
+        const operation = { noteId: String(noteId), target }
+        deleteOperationRef.current = operation
+        setIsDeleting(true)
+
+        const isCurrentOperation = () => (
+            deleteOperationRef.current === operation &&
+            String(noteIdRef.current) === operation.noteId
+        )
+
         try {
-            await deleteCommentReply(threadId, replyId)
+            if (target.type === 'thread') {
+                const thread = threads.find((item) => item._id === target.threadId)
+                await deleteCommentThread(target.threadId)
+
+                if (!isCurrentOperation()) return
+
+                if (thread?.anchorId && onCommentDeleted) {
+                    onCommentDeleted(thread.anchorId)
+                }
+                setActiveThreadId(null)
+            } else {
+                await deleteCommentReply(target.threadId, target.replyId)
+
+                if (!isCurrentOperation()) return
+            }
+
+            setDeleteTarget(null)
         } catch (err) {
-            console.error('Failed to delete reply:', err)
-            alert('Failed to delete reply')
+            if (!isCurrentOperation()) return
+
+            console.error(`Failed to delete ${target.type}:`, err)
+            alert(target.type === 'thread' ? 'Failed to delete thread' : 'Failed to delete reply')
+        } finally {
+            if (deleteOperationRef.current === operation) {
+                deleteOperationRef.current = null
+                setIsDeleting(false)
+            }
         }
-    }
+    }, [deleteTarget, noteId, onCommentDeleted, setActiveThreadId, threads])
 
     const safeThreads = Array.isArray(threads) ? threads : []
     const isResolvedThread = (thread) => thread.resolved === true || thread.status === 'resolved'
@@ -398,8 +451,8 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                             onReply={handleReply}
                             onResolve={handleResolve}
                             onReopen={handleReopen}
-                            onDeleteThread={handleDeleteThread}
-                            onDeleteReply={handleDeleteReply}
+                            onDeleteThread={openThreadDeleteConfirmation}
+                            onDeleteReply={openReplyDeleteConfirmation}
                             pendingThreadAction={pendingThreadAction?.threadId === activeThread._id
                                 ? pendingThreadAction.action
                                 : null}
@@ -433,6 +486,15 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                         </div>
                     )}
                 </div>
+            )}
+
+            {deleteTarget && (
+                <CommentDeleteConfirmDialog
+                    target={deleteTarget}
+                    isDeleting={isDeleting}
+                    onConfirm={handleConfirmedDelete}
+                    onCancel={closeDeleteConfirmation}
+                />
             )}
 
             {/* Temporary Add Comment Modal */}

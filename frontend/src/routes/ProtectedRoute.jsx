@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
+import { CommandPaletteProvider } from "../components/command-palette/CommandPaletteProvider"
 
 const ProtectedRoute = () => {
     const { isAuthenticated, isLoading } = useAuth()
@@ -18,7 +19,11 @@ const ProtectedRoute = () => {
     }
 
     if (isAuthenticated) {
-        return <Outlet />
+        return (
+            <CommandPaletteProvider>
+                <Outlet />
+            </CommandPaletteProvider>
+        )
     }
 
     return <Navigate to="/login" replace />

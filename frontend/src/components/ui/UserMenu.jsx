@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useAuth } from "../../context/AuthContext"
 import { IconLogOut, IconSettings } from "./Icons"
 import { getDisplayName } from "./uiUtils"
+import { createSettingsNavigationOptions } from "../../utils/settingsNavigation"
 
 const getUserInitial = (user) => {
     const name = getDisplayName(user)
@@ -11,6 +12,7 @@ const getUserInitial = (user) => {
 
 const UserMenu = () => {
     const navigate = useNavigate()
+    const location = useLocation()
     const menuRef = useRef(null)
     const { user, logout } = useAuth()
     const [isOpen, setIsOpen] = useState(false)
@@ -39,7 +41,7 @@ const UserMenu = () => {
 
     const handleSettings = () => {
         setIsOpen(false)
-        navigate("/settings")
+        navigate("/settings", createSettingsNavigationOptions(location))
     }
 
     const handleLogout = async () => {

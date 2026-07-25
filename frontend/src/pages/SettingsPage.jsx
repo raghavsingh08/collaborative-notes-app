@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { updatePassword, updateProfile } from "../api/auth.api"
 import { ErrorState, SuccessNotice } from "../components/ui/AppUI"
 import { IconArrowLeft, IconMoon, IconSun } from "../components/ui/Icons"
@@ -7,6 +7,7 @@ import PasswordField from "../components/ui/PasswordField"
 import { useAuth } from "../context/AuthContext"
 import { useTheme } from "../context/ThemeContext"
 import usePageTitle from "../hooks/usePageTitle"
+import { getSettingsReturnLocation } from "../utils/settingsNavigation"
 
 const getMessageFromError = (error, fallback) => {
     return error?.response?.data?.message || fallback
@@ -19,6 +20,7 @@ const getUserFromResponse = (response) => {
 const SettingsPage = () => {
     usePageTitle("Settings")
     const navigate = useNavigate()
+    const location = useLocation()
     const { user, fetchCurrentUser } = useAuth()
     const { theme, toggleTheme } = useTheme()
     const [username, setUsername] = useState("")
@@ -52,6 +54,16 @@ const SettingsPage = () => {
 
     const hasProfileChanged = username.trim() !== (user?.username || "") || email.trim() !== (user?.email || "")
     const canUpdatePassword = Boolean(oldPassword && newPassword)
+    const returnLocation = getSettingsReturnLocation(location.state)
+
+    const handleBack = () => {
+        if (returnLocation) {
+            navigate(-1)
+            return
+        }
+
+        navigate("/dashboard", { replace: true })
+    }
 
     const handleCancelProfile = () => {
         setUsername(user?.username || "")
@@ -117,7 +129,7 @@ const SettingsPage = () => {
                 <button
                     className="settings-back-button"
                     type="button"
-                    onClick={() => navigate("/dashboard")}
+                    onClick={handleBack}
                 >
                     <IconArrowLeft size={14} />
                     Dashboard

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { deleteNote, getNoteById, updateNote } from "../api/notes.api"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
 import { AvatarStack, EmptyState, ErrorState, LoadingRows } from "../components/ui/AppUI"
@@ -16,6 +16,7 @@ import { getDisplayName } from "../components/ui/uiUtils"
 import { useAuth } from "../context/AuthContext"
 import useNoteSocket from "../hooks/useNoteSocket"
 import usePageTitle from "../hooks/usePageTitle"
+import { createSettingsNavigationOptions } from "../utils/settingsNavigation"
 
 const getNoteFromResponse = (response) => {
     return response?.data?.note || response?.data?.data?.note || response?.data?.data || response?.data
@@ -53,6 +54,7 @@ const getId = (user) => user?._id || user?.id || user
 const NoteEditorPage = () => {
     const { noteId } = useParams()
     const navigate = useNavigate()
+    const location = useLocation()
     const { user } = useAuth()
     const [title, setTitle] = useState("")
     const [content, setContent] = useState("")
@@ -330,7 +332,7 @@ const NoteEditorPage = () => {
                                     role="menuitem"
                                     onClick={() => {
                                         setIsEditorMoreOpen(false)
-                                        navigate("/settings")
+                                        navigate("/settings", createSettingsNavigationOptions(location))
                                     }}
                                 >
                                     <IconSettings size={14} />

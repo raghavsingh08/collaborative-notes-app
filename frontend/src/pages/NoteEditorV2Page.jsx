@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { deleteNote, getNoteById, updateNote } from "../api/notes.api"
 import { getComments } from "../api/comments.api"
 import ShareNoteModal from "../components/notes/ShareNoteModal"
@@ -18,6 +18,7 @@ import socket from "../api/socket"
 import useNoteSocketV2 from "../hooks/useNoteSocketV2"
 import usePageTitle from "../hooks/usePageTitle"
 import { useCommandPalette, useCommandRegistration } from "../hooks/useCommandPalette"
+import { createSettingsNavigationOptions } from "../utils/settingsNavigation"
 import TipTapEditor from '../components/editor/TipTapEditor'
 import { CollaborationProvider, useCollaboration } from "../collaboration/CollaborationProvider"
 import CommentsSidebar from "../components/comments/CommentsSidebar"
@@ -417,6 +418,7 @@ const ActiveCollaboratorsStack = ({ currentUser, currentUserId, isConnected }) =
 const NoteEditorV2Page = () => {
     const { noteId } = useParams()
     const navigate = useNavigate()
+    const location = useLocation()
     const { user } = useAuth()
     const [title, setTitle] = useState("")
     const [content, setContent] = useState("")
@@ -1846,7 +1848,7 @@ const NoteEditorV2Page = () => {
         getContentQueueStatus
     ])
 
-    const navigateAfterFlush = useCallback(async (destination) => {
+    const navigateAfterFlush = useCallback(async (destination, options) => {
         if (navigationFlushPromiseRef.current) return
 
         let didNavigate = false
@@ -1859,7 +1861,7 @@ const NoteEditorV2Page = () => {
 
             if (status === "idle" && isMountedRef.current) {
                 didNavigate = true
-                navigate(destination)
+                navigate(destination, options)
             }
 
             return status
@@ -1879,6 +1881,10 @@ const NoteEditorV2Page = () => {
             }
         }
     }, [flushBeforeNavigation, navigate])
+
+    const openSettingsAfterFlush = useCallback(() => {
+        return navigateAfterFlush("/settings", createSettingsNavigationOptions(location))
+    }, [location, navigateAfterFlush])
 
     const openCommentsPanel = useCallback(() => {
         setIsCommentsOpen(true)
@@ -1935,7 +1941,7 @@ const NoteEditorV2Page = () => {
                 group: "Navigation",
                 icon: IconSettings,
                 enabled: !isNavigatingAfterFlush,
-                execute: async () => (await navigateAfterFlush("/settings")) === "idle"
+                execute: async () => (await openSettingsAfterFlush()) === "idle"
             },
             {
                 id: "editor.save-note",
@@ -2008,6 +2014,7 @@ const NoteEditorV2Page = () => {
         navigateAfterFlush,
         noteOwner,
         openActivityPanel,
+        openSettingsAfterFlush,
         openCollaborators,
         openCommentsPanel,
         openVersionHistoryPanel
@@ -2387,7 +2394,7 @@ const NoteEditorV2Page = () => {
                                         role="menuitem"
                                         onClick={() => {
                                             setIsEditorMoreOpen(false)
-                                            navigateAfterFlush("/settings")
+                                            openSettingsAfterFlush()
                                         }}
                                     >
                                         <IconSettings size={14} />

@@ -17,6 +17,7 @@ import { useAuth } from "../context/AuthContext"
 import socket from "../api/socket"
 import useNoteSocketV2 from "../hooks/useNoteSocketV2"
 import usePageTitle from "../hooks/usePageTitle"
+import useEditorShortcuts from "../hooks/useEditorShortcuts"
 import { useCommandPalette, useCommandRegistration } from "../hooks/useCommandPalette"
 import { createSettingsNavigationOptions } from "../utils/settingsNavigation"
 import TipTapEditor from '../components/editor/TipTapEditor'
@@ -440,6 +441,8 @@ const NoteEditorV2Page = () => {
     const [isShareOpen, setIsShareOpen] = useState(false)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
     const [isCommentDeleteConfirmOpen, setIsCommentDeleteConfirmOpen] = useState(false)
+    const [isCommentCreateDialogOpen, setIsCommentCreateDialogOpen] = useState(false)
+    const [isVersionPreviewOpen, setIsVersionPreviewOpen] = useState(false)
     const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false)
     
     // Step 17D Integration State
@@ -537,8 +540,7 @@ const NoteEditorV2Page = () => {
     usePageTitle(title || "Editor")
 
     const { socketError, isConnected, isReconnecting } = useNoteSocketV2(noteId)
-    const { setBlockingDialog } = useCommandPalette()
-
+    const { setBlockingDialog, isOpen: isCommandPaletteOpen } = useCommandPalette()
     const saveStatus = getCombinedSaveStatus({
         isTitleSaving,
         isContentSaving,
@@ -1757,6 +1759,31 @@ const NoteEditorV2Page = () => {
         enqueueContentSave(buildContentSaveSnapshot(saveType))
     }, [buildContentSaveSnapshot, clearTitleAutosaveTimer, enqueueContentSave, noteId])
 
+    const isEditorShortcutBlocked = (
+        isCommandPaletteOpen ||
+        isShareOpen ||
+        isDeleteConfirmOpen ||
+        isCommentDeleteConfirmOpen ||
+        isCommentCreateDialogOpen ||
+        isVersionPreviewOpen ||
+        isNavigatingAfterFlush
+    )
+
+    const isEditorShortcutEnabled = Boolean(
+        isMountedRef.current &&
+        hasLoadedNote.current &&
+        !isLoading &&
+        !loadError &&
+        noteOwner &&
+        !isNavigatingAfterFlush
+    )
+
+    useEditorShortcuts({
+        enabled: isEditorShortcutEnabled,
+        onManualSave: () => handleSave("manual"),
+        isBlocked: isEditorShortcutBlocked
+    })
+
     const flushContentBeforeNavigation = useCallback(async (targetNoteId, targetGeneration) => {
         const targetKey = String(targetNoteId)
 
@@ -2437,6 +2464,7 @@ const NoteEditorV2Page = () => {
                             onBlur={handleTitleBlur}
                             placeholder="Untitled"
                             aria-label="Note title"
+                            data-editor-shortcut-scope="true"
                         />
 
                         <hr className="content-divider" aria-hidden="true" />
@@ -2507,6 +2535,7 @@ const NoteEditorV2Page = () => {
                             isOpen={isCommentsOpen}
                             onClose={() => setIsCommentsOpen(false)}
                             onDeleteDialogOpenChange={setIsCommentDeleteConfirmOpen}
+                            onCreateDialogOpenChange={setIsCommentCreateDialogOpen}
                         />
                     )}
 
@@ -2516,6 +2545,7 @@ const NoteEditorV2Page = () => {
                             refreshTrigger={historyRefreshTrigger} 
                             onClose={() => setIsHistoryOpen(false)}
                             isOpen={true}
+                            onPreviewDialogOpenChange={setIsVersionPreviewOpen}
                         />
                     )}
 

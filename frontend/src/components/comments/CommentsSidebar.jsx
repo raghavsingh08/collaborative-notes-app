@@ -6,7 +6,7 @@ import CommentDeleteConfirmDialog from './CommentDeleteConfirmDialog'
 import { Plus, MessageSquare, X } from 'lucide-react'
 import socket from '../../api/socket'
 
-const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted, isOpen, onClose, onDeleteDialogOpenChange }) => {
+const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted, isOpen, onClose, onDeleteDialogOpenChange, onCreateDialogOpenChange }) => {
     const [threads, setThreads] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -39,10 +39,15 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
         onDeleteDialogOpenChange?.(Boolean(deleteTarget))
     }, [deleteTarget, onDeleteDialogOpenChange])
 
+    useEffect(() => {
+        onCreateDialogOpenChange?.(isAddModalOpen)
+    }, [isAddModalOpen, onCreateDialogOpenChange])
+
     useEffect(() => () => {
         deleteOperationRef.current = null
         onDeleteDialogOpenChange?.(false)
-    }, [onDeleteDialogOpenChange])
+        onCreateDialogOpenChange?.(false)
+    }, [onCreateDialogOpenChange, onDeleteDialogOpenChange])
 
     const fetchComments = useCallback((background = false) => {
         if (!noteId) {

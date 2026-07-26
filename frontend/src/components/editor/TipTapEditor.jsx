@@ -51,6 +51,7 @@ const TipTapEditor = forwardRef(({ initialContent, initialContentJson, onUpdate,
             attributes: {
                 class: 'content-editor',
                 'aria-label': 'Note content',
+                'data-editor-shortcut-scope': 'true',
             },
         },
     });

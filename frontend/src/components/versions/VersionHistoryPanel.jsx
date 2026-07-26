@@ -3,7 +3,7 @@ import { getNoteVersions, getNoteVersionById, restoreNoteVersion } from '../../a
 import { History, X, Eye, RotateCcw } from 'lucide-react'
 import { renderVersionPreview, unwrapVersionResponse } from '../../utils/versionPreview'
 
-const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
+const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen, onPreviewDialogOpenChange }) => {
     const [versions, setVersions] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -11,6 +11,12 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen }) => {
     const [previewContent, setPreviewContent] = useState(null)
     const [isPreviewLoading, setIsPreviewLoading] = useState(false)
     const [isRestoring, setIsRestoring] = useState(false)
+
+    useEffect(() => {
+        onPreviewDialogOpenChange?.(Boolean(previewingVersion))
+    }, [onPreviewDialogOpenChange, previewingVersion])
+
+    useEffect(() => () => onPreviewDialogOpenChange?.(false), [onPreviewDialogOpenChange])
 
     useEffect(() => {
         const fetchVersions = async () => {

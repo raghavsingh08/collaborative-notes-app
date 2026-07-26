@@ -227,8 +227,9 @@ export const CommandPaletteProvider = ({ children }) => {
         registerCommands,
         setBlockingDialog,
         closePalette,
-        openPalette
-    }), [closePalette, openPalette, registerCommands, setBlockingDialog])
+        openPalette,
+        isOpen
+    }), [closePalette, isOpen, openPalette, registerCommands, setBlockingDialog])
 
     return (
         <CommandPaletteContext.Provider value={contextValue}>

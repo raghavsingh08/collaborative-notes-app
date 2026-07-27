@@ -6,14 +6,14 @@ const isEditorShortcutTarget = (target) => (
     )
 )
 
-const useEditorShortcuts = ({ enabled, onManualSave, isBlocked }) => {
+const useEditorShortcuts = ({ enabled, blocked, onManualSave }) => {
     const enabledRef = useRef(enabled)
     const onManualSaveRef = useRef(onManualSave)
-    const isBlockedRef = useRef(isBlocked)
+    const blockedRef = useRef(blocked)
 
     enabledRef.current = enabled
     onManualSaveRef.current = onManualSave
-    isBlockedRef.current = isBlocked
+    blockedRef.current = blocked
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -27,7 +27,7 @@ const useEditorShortcuts = ({ enabled, onManualSave, isBlocked }) => {
             if (
                 !isManualSaveShortcut ||
                 !enabledRef.current ||
-                isBlockedRef.current ||
+                blockedRef.current ||
                 !isEditorShortcutTarget(event.target)
             ) {
                 return

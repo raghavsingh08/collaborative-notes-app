@@ -1769,19 +1769,34 @@ const NoteEditorV2Page = () => {
         isNavigatingAfterFlush
     )
 
+    const isCurrentEditorReady = Boolean(
+        editorReadyVersion > 0 &&
+        String(noteIdRef.current || "") === String(noteId) &&
+        commentAnchorReconciliationRef.current.noteId === String(noteId) &&
+        commentAnchorReconciliationRef.current.editorReady &&
+        commentAnchorReconciliationRef.current.readyEditor === editorRef.current?.getEditor?.()
+    )
+
     const isEditorShortcutEnabled = Boolean(
         isMountedRef.current &&
         hasLoadedNote.current &&
+        currentUserId &&
         !isLoading &&
         !loadError &&
         noteOwner &&
+        isCurrentEditorReady &&
         !isNavigatingAfterFlush
+    )
+
+    const handleManualSaveShortcut = useCallback(
+        () => handleSave("manual"),
+        [handleSave]
     )
 
     useEditorShortcuts({
         enabled: isEditorShortcutEnabled,
-        onManualSave: () => handleSave("manual"),
-        isBlocked: isEditorShortcutBlocked
+        blocked: isEditorShortcutBlocked,
+        onManualSave: handleManualSaveShortcut
     })
 
     const flushContentBeforeNavigation = useCallback(async (targetNoteId, targetGeneration) => {

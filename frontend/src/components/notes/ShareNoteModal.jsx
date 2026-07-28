@@ -32,6 +32,14 @@ const isUserInList = (user, users = []) => {
     })
 }
 
+const getFocusableElements = (container) => {
+    if (!container) return []
+
+    return Array.from(container.querySelectorAll(
+        'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => !element.hasAttribute("hidden"))
+}
+
 const PresenceMarks = ({ isOnline, isTyping }) => (
     <>
         {isOnline && <span className="presence-dot" aria-hidden="true" />}
@@ -57,7 +65,8 @@ const ShareNoteModal = ({
     fallbackCollaborators = [],
     activeUsers = [],
     typingUsers = [],
-    onClose
+    onClose,
+    onNestedDialogOpenChange
 }) => {
     const [recipient, setRecipient] = useState("")
     const [sharedUsers, setSharedUsers] = useState([])
@@ -67,6 +76,11 @@ const ShareNoteModal = ({
     const [userToRemove, setUserToRemove] = useState(null)
     const [error, setError] = useState("")
     const panelRef = useRef(null)
+    const closeButtonRef = useRef(null)
+    const nestedDialogRef = useRef(null)
+    const nestedCancelButtonRef = useRef(null)
+    const previousFocusRef = useRef(null)
+    const nestedPreviousFocusRef = useRef(null)
     const fallbackUsers = useMemo(
         () => getUsersFromNoteField(fallbackCollaborators, currentUser),
         [currentUser, fallbackCollaborators]
@@ -108,24 +122,96 @@ const ShareNoteModal = ({
             if (!panelRef.current?.contains(event.target)) onClose()
         }
 
-        const handleKeyDown = (event) => {
-            if (event.key === "Escape") {
-                if (userToRemove) {
-                    setUserToRemove(null)
-                } else {
-                    onClose()
-                }
-            }
-        }
-
         document.addEventListener("pointerdown", handlePointerDown)
-        document.addEventListener("keydown", handleKeyDown)
+        return () => document.removeEventListener("pointerdown", handlePointerDown)
+    }, [onClose, userToRemove])
+
+    useEffect(() => {
+        onNestedDialogOpenChange?.(Boolean(userToRemove))
+    }, [onNestedDialogOpenChange, userToRemove])
+
+    useEffect(() => () => onNestedDialogOpenChange?.(false), [onNestedDialogOpenChange])
+    useEffect(() => {
+        previousFocusRef.current = document.activeElement
+        const frame = requestAnimationFrame(() => closeButtonRef.current?.focus())
 
         return () => {
-            document.removeEventListener("pointerdown", handlePointerDown)
-            document.removeEventListener("keydown", handleKeyDown)
+            cancelAnimationFrame(frame)
+            const previousFocus = previousFocusRef.current
+            previousFocusRef.current = null
+
+            requestAnimationFrame(() => {
+                if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {
+                    previousFocus.focus()
+                }
+            })
         }
-    }, [onClose, userToRemove])
+    }, [])
+
+    useEffect(() => {
+        if (!userToRemove) return undefined
+
+        nestedPreviousFocusRef.current = document.activeElement
+        const frame = requestAnimationFrame(() => nestedCancelButtonRef.current?.focus())
+
+        return () => {
+            cancelAnimationFrame(frame)
+            const previousFocus = nestedPreviousFocusRef.current
+            nestedPreviousFocusRef.current = null
+
+            requestAnimationFrame(() => {
+                if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {
+                    previousFocus.focus()
+                }
+            })
+        }
+    }, [userToRemove])
+
+    const trapFocus = (event, container) => {
+        if (event.key !== "Tab") return false
+
+        const focusable = getFocusableElements(container)
+        if (focusable.length === 0) return false
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault()
+            last.focus()
+            return true
+        }
+
+        if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first.focus()
+            return true
+        }
+
+        return false
+    }
+
+    const handleShareKeyDown = (event) => {
+        if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            if (!event.repeat) onClose()
+            return
+        }
+
+        trapFocus(event, panelRef.current)
+    }
+
+    const handleNestedDialogKeyDown = (event) => {
+        if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            if (!event.repeat) setUserToRemove(null)
+            return
+        }
+
+        trapFocus(event, nestedDialogRef.current)
+    }
 
     const handleShare = async (event) => {
         event.preventDefault()
@@ -173,6 +259,7 @@ const ShareNoteModal = ({
                 aria-modal="true"
                 aria-labelledby="collaboration-panel-title"
                 ref={panelRef}
+                onKeyDownCapture={handleShareKeyDown}
             >
                 <header className="modal-header">
                     <div>
@@ -180,6 +267,7 @@ const ShareNoteModal = ({
                         <h2 id="collaboration-panel-title">Manage access</h2>
                     </div>
                     <button
+                        ref={closeButtonRef}
                         className="icon-button"
                         type="button"
                         onClick={onClose}
@@ -308,10 +396,12 @@ const ShareNoteModal = ({
                     }}
                 >
                     <section
+                        ref={nestedDialogRef}
                         className="modal-card delete-confirm-modal"
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="remove-user-title"
+                        onKeyDownCapture={handleNestedDialogKeyDown}
                     >
                         <header className="modal-header">
                             <div>
@@ -331,6 +421,7 @@ const ShareNoteModal = ({
 
                         <div className="modal-actions">
                             <button
+                                ref={nestedCancelButtonRef}
                                 className="ghost-button"
                                 type="button"
                                 onClick={() => setUserToRemove(null)}

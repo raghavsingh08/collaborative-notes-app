@@ -75,6 +75,14 @@ const saveStatusClassMap = {
     "Save failed": "save-failed"
 }
 
+const getFocusableElements = (container) => {
+    if (!container) return []
+
+    return Array.from(container.querySelectorAll(
+        'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => !element.hasAttribute("hidden"))
+}
+
 const TITLE_AUTOSAVE_DELAY_MS = 750
 const CONTENT_AUTOSAVE_DELAY_MS = 1000
 const MAX_CONTENT_RECOVERY_ATTEMPTS = 3
@@ -439,6 +447,7 @@ const NoteEditorV2Page = () => {
     const [error, setError] = useState("")
     const [loadError, setLoadError] = useState(false)
     const [isShareOpen, setIsShareOpen] = useState(false)
+    const [isShareNestedDialogOpen, setIsShareNestedDialogOpen] = useState(false)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
     const [isCommentDeleteConfirmOpen, setIsCommentDeleteConfirmOpen] = useState(false)
     const [isCommentCreateDialogOpen, setIsCommentCreateDialogOpen] = useState(false)
@@ -490,6 +499,10 @@ const NoteEditorV2Page = () => {
 
     const hasLoadedNote = useRef(false)
     const editorMoreRef = useRef(null)
+    const noteDeleteDialogRef = useRef(null)
+    const noteDeleteCancelButtonRef = useRef(null)
+    const noteDeletePreviousFocusRef = useRef(null)
+    const v2EscapeFallbackRef = useRef(null)
     const latestPayloadRef = useRef({ content: "", contentJson: null })
     const latestContentDraftRef = useRef(null)
     const confirmedContentSnapshotRef = useRef(null)
@@ -1232,17 +1245,8 @@ const NoteEditorV2Page = () => {
             }
         }
 
-        const handleKeyDown = (event) => {
-            if (event.key === "Escape") setIsEditorMoreOpen(false)
-        }
-
         document.addEventListener("pointerdown", handlePointerDown)
-        document.addEventListener("keydown", handleKeyDown)
-
-        return () => {
-            document.removeEventListener("pointerdown", handlePointerDown)
-            document.removeEventListener("keydown", handleKeyDown)
-        }
+        return () => document.removeEventListener("pointerdown", handlePointerDown)
     }, [isEditorMoreOpen])
 
     const handleTitleChange = (event) => {
@@ -1759,9 +1763,10 @@ const NoteEditorV2Page = () => {
         enqueueContentSave(buildContentSaveSnapshot(saveType))
     }, [buildContentSaveSnapshot, clearTitleAutosaveTimer, enqueueContentSave, noteId])
 
-    const isEditorShortcutBlocked = (
+    const isV2BlockingLayerOpen = (
         isCommandPaletteOpen ||
         isShareOpen ||
+        isShareNestedDialogOpen ||
         isDeleteConfirmOpen ||
         isCommentDeleteConfirmOpen ||
         isCommentCreateDialogOpen ||
@@ -1795,7 +1800,7 @@ const NoteEditorV2Page = () => {
 
     useEditorShortcuts({
         enabled: isEditorShortcutEnabled,
-        blocked: isEditorShortcutBlocked,
+        blocked: isV2BlockingLayerOpen,
         onManualSave: handleManualSaveShortcut
     })
 
@@ -1952,15 +1957,126 @@ const NoteEditorV2Page = () => {
         setIsActivityOpen(false)
     }, [])
 
+    const closeEditorMoreMenu = useCallback(() => {
+        setIsEditorMoreOpen(false)
+        requestAnimationFrame(() => editorMoreRef.current?.querySelector(".editor-more-trigger")?.focus())
+    }, [])
+
+    const closeCommentDiscussion = useCallback(() => {
+        setActiveThreadId(null)
+    }, [])
+
+    const isCommentDiscussionVisible = Boolean(
+        activeThreadId &&
+        !isHistoryOpen &&
+        !isActivityOpen &&
+        (!useOverlay || isCommentsOpen)
+    )
+    const hasOpenPanel = Boolean(isCommentsOpen || isHistoryOpen || isActivityOpen)
+
+    v2EscapeFallbackRef.current = {
+        isBlockingLayerOpen: isV2BlockingLayerOpen,
+        isEditorMoreOpen,
+        isCommentDiscussionVisible,
+        hasOpenPanel,
+        closeEditorMoreMenu,
+        closeCommentDiscussion,
+        closeOpenPanel
+    }
+
+    useEffect(() => {
+        const handleEscape = (event) => {
+            if (event.key !== "Escape" || event.repeat) return
+
+            const state = v2EscapeFallbackRef.current
+            if (!state || state.isBlockingLayerOpen) return
+
+            if (state.isEditorMoreOpen) {
+                event.preventDefault()
+                event.stopPropagation()
+                state.closeEditorMoreMenu()
+                return
+            }
+
+            if (state.isCommentDiscussionVisible) {
+                event.preventDefault()
+                event.stopPropagation()
+                state.closeCommentDiscussion()
+                return
+            }
+
+            if (state.hasOpenPanel) {
+                event.preventDefault()
+                event.stopPropagation()
+                state.closeOpenPanel()
+            }
+        }
+
+        document.addEventListener("keydown", handleEscape, true)
+        return () => document.removeEventListener("keydown", handleEscape, true)
+    }, [])
+
     const openCollaborators = useCallback(() => {
         setIsShareOpen(true)
     }, [])
 
     useEffect(() => {
-        setBlockingDialog(isShareOpen || isDeleteConfirmOpen || isCommentDeleteConfirmOpen)
+        setBlockingDialog(isV2BlockingLayerOpen)
 
         return () => setBlockingDialog(false)
-    }, [isCommentDeleteConfirmOpen, isDeleteConfirmOpen, isShareOpen, setBlockingDialog])
+    }, [isV2BlockingLayerOpen, setBlockingDialog])
+
+    useEffect(() => {
+        if (!isDeleteConfirmOpen) return undefined
+
+        noteDeletePreviousFocusRef.current = document.activeElement
+        const editorMoreContainer = editorMoreRef.current
+        const frame = requestAnimationFrame(() => noteDeleteCancelButtonRef.current?.focus())
+
+        return () => {
+            cancelAnimationFrame(frame)
+            const previousFocus = noteDeletePreviousFocusRef.current
+            noteDeletePreviousFocusRef.current = null
+
+            requestAnimationFrame(() => {
+                if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {
+                    previousFocus.focus()
+                    return
+                }
+
+                editorMoreContainer?.querySelector(".editor-more-trigger")?.focus()
+            })
+        }
+    }, [isDeleteConfirmOpen])
+
+    const closeNoteDeleteConfirmation = useCallback(() => {
+        setIsDeleteConfirmOpen(false)
+    }, [])
+
+    const handleNoteDeleteKeyDown = useCallback((event) => {
+        if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            if (!event.repeat) closeNoteDeleteConfirmation()
+            return
+        }
+
+        if (event.key !== "Tab") return
+
+        const focusable = getFocusableElements(noteDeleteDialogRef.current)
+        if (focusable.length === 0) return
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault()
+            last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first.focus()
+        }
+    }, [closeNoteDeleteConfirmation])
 
     const commandPaletteCommands = useMemo(() => {
         const isEditorReady = hasLoadedNote.current && !isLoading && !loadError && Boolean(noteOwner)
@@ -2583,10 +2699,8 @@ const NoteEditorV2Page = () => {
                         fallbackCollaborators={uniqueCollaborators}
                         activeUsers={sortedActiveUsers}
                         typingUsers={uniqueTypingUsers}
-                        onClose={() => {
-                            setIsShareOpen(false)
-
-                        }}
+                        onClose={() => setIsShareOpen(false)}
+                        onNestedDialogOpenChange={setIsShareNestedDialogOpen}
                     />
                 )}
 
@@ -2597,6 +2711,8 @@ const NoteEditorV2Page = () => {
                             role="dialog"
                             aria-modal="true"
                             aria-labelledby="delete-note-title"
+                            ref={noteDeleteDialogRef}
+                            onKeyDownCapture={handleNoteDeleteKeyDown}
                         >
                             <header className="modal-header">
                                 <div>
@@ -2604,9 +2720,10 @@ const NoteEditorV2Page = () => {
                                     <h2 id="delete-note-title">Confirm deletion</h2>
                                 </div>
                                 <button
+                                    ref={noteDeleteCancelButtonRef}
                                     className="icon-button"
                                     type="button"
-                                    onClick={() => setIsDeleteConfirmOpen(false)}
+                                    onClick={closeNoteDeleteConfirmation}
                                     aria-label="Cancel"
                                 >
                                     <IconClose size={15} />
@@ -2619,7 +2736,7 @@ const NoteEditorV2Page = () => {
                                 <button
                                     className="ghost-button"
                                     type="button"
-                                    onClick={() => setIsDeleteConfirmOpen(false)}
+                                    onClick={closeNoteDeleteConfirmation}
                                 >
                                     Cancel
                                 </button>

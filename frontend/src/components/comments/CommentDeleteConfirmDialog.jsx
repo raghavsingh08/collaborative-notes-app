@@ -42,7 +42,7 @@ const CommentDeleteConfirmDialog = ({ target, isDeleting, onConfirm, onCancel })
         if (event.key === "Escape") {
             event.preventDefault()
             event.stopPropagation()
-            if (!isDeleting) onCancel()
+            if (!event.repeat && !isDeleting) onCancel()
             return
         }
 

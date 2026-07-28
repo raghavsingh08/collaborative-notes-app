@@ -47,7 +47,7 @@ const CommandPalette = ({
         if (event.key === "Escape") {
             event.preventDefault()
             event.stopPropagation()
-            onClose()
+            if (!event.repeat) onClose()
             return
         }
 

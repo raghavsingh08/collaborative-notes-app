@@ -6,6 +6,13 @@ import CommentDeleteConfirmDialog from './CommentDeleteConfirmDialog'
 import { Plus, MessageSquare, X } from 'lucide-react'
 import socket from '../../api/socket'
 
+const getFocusableElements = (container) => {
+    if (!container) return []
+
+    return Array.from(container.querySelectorAll(
+        'input:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => !element.hasAttribute("hidden"))
+}
 const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted, isOpen, onClose, onDeleteDialogOpenChange, onCreateDialogOpenChange }) => {
     const [threads, setThreads] = useState([])
     const [isLoading, setIsLoading] = useState(true)
@@ -26,7 +33,9 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     const pendingCommentsRefreshRef = useRef(null)
     const isMountedRef = useRef(false)
     const noteIdRef = useRef(noteId)
-
+    const createDialogRef = useRef(null)
+    const createCloseButtonRef = useRef(null)
+    const createPreviousFocusRef = useRef(null)
     noteIdRef.current = noteId
 
     useEffect(() => {
@@ -43,6 +52,24 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
         onCreateDialogOpenChange?.(isAddModalOpen)
     }, [isAddModalOpen, onCreateDialogOpenChange])
 
+    useEffect(() => {
+        if (!isAddModalOpen) return undefined
+
+        createPreviousFocusRef.current = document.activeElement
+        const frame = requestAnimationFrame(() => createCloseButtonRef.current?.focus())
+
+        return () => {
+            cancelAnimationFrame(frame)
+            const previousFocus = createPreviousFocusRef.current
+            createPreviousFocusRef.current = null
+
+            requestAnimationFrame(() => {
+                if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {
+                    previousFocus.focus()
+                }
+            })
+        }
+    }, [isAddModalOpen])
     useEffect(() => () => {
         deleteOperationRef.current = null
         onDeleteDialogOpenChange?.(false)
@@ -163,8 +190,36 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
         }
     }, [noteId, fetchComments])
 
-    const normalizedSelection = editorSelection?.selectedText ? editorSelection.selectedText.trim() : "";
+    const closeCreateDialog = useCallback(() => {
+        setIsAddModalOpen(false)
+    }, [])
 
+    const handleCreateDialogKeyDown = useCallback((event) => {
+        if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            if (!event.repeat) closeCreateDialog()
+            return
+        }
+
+        if (event.key !== "Tab") return
+
+        const focusable = getFocusableElements(createDialogRef.current)
+        if (focusable.length === 0) return
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault()
+            last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first.focus()
+        }
+    }, [closeCreateDialog])
+
+    const normalizedSelection = editorSelection?.selectedText ? editorSelection.selectedText.trim() : "";
     const handleCreateComment = async (e) => {
         e.preventDefault()
         if (normalizedSelection.length < 2 || !newCommentText.trim() || newCommentText.length > 1000 || isSubmitting) return
@@ -505,10 +560,23 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
             {/* Temporary Add Comment Modal */}
             {isAddModalOpen && (
                 <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="modal-card" style={{ width: '400px', backgroundColor: 'var(--bg-color, #1e293b)', padding: '24px', borderRadius: '12px', boxShadow: '0 20px 40px rgba(0,0,0,0.4)', border: '1px solid var(--border)' }}>
+                    <div
+                        ref={createDialogRef}
+                        className="modal-card"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="new-comment-title"
+                        onKeyDownCapture={handleCreateDialogKeyDown}
+                        style={{ width: '400px', backgroundColor: 'var(--bg-color, #1e293b)', padding: '24px', borderRadius: '12px', boxShadow: '0 20px 40px rgba(0,0,0,0.4)', border: '1px solid var(--border)' }}
+                    >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <h3 style={{ margin: 0, fontSize: '16px' }}>New Comment</h3>
-                            <button className="icon-button" onClick={() => setIsAddModalOpen(false)}>
+                            <h3 id="new-comment-title" style={{ margin: 0, fontSize: '16px' }}>New Comment</h3>
+                            <button
+                                ref={createCloseButtonRef}
+                                className="icon-button"
+                                onClick={closeCreateDialog}
+                                aria-label="Close new comment dialog"
+                            >
                                 <X size={16} />
                             </button>
                         </div>
@@ -545,7 +613,7 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
                                 />
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                                <button type="button" className="ghost-button" onClick={() => setIsAddModalOpen(false)}>Cancel</button>
+                                <button type="button" className="ghost-button" onClick={closeCreateDialog}>Cancel</button>
                                 <button type="submit" className="primary-button" disabled={isSubmitting || newCommentText.length > 1000 || !newCommentText.trim()}>
                                     {isSubmitting ? 'Posting...' : 'Post Comment'}
                                 </button>

@@ -1,8 +1,15 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { getNoteVersions, getNoteVersionById, restoreNoteVersion } from '../../api/notes.api'
 import { History, X, Eye, RotateCcw } from 'lucide-react'
 import { renderVersionPreview, unwrapVersionResponse } from '../../utils/versionPreview'
 
+const getFocusableElements = (container) => {
+    if (!container) return []
+
+    return Array.from(container.querySelectorAll(
+        'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => !element.hasAttribute("hidden"))
+}
 const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen, onPreviewDialogOpenChange }) => {
     const [versions, setVersions] = useState([])
     const [isLoading, setIsLoading] = useState(true)
@@ -11,7 +18,58 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen, onPrevie
     const [previewContent, setPreviewContent] = useState(null)
     const [isPreviewLoading, setIsPreviewLoading] = useState(false)
     const [isRestoring, setIsRestoring] = useState(false)
+    const previewDialogRef = useRef(null)
+    const previewCloseButtonRef = useRef(null)
+    const previewPreviousFocusRef = useRef(null)
 
+    const closePreview = () => {
+        setPreviewingVersion(null)
+        setPreviewContent(null)
+    }
+
+    const handlePreviewKeyDown = (event) => {
+        if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            if (!event.repeat) closePreview()
+            return
+        }
+
+        if (event.key !== "Tab") return
+
+        const focusable = getFocusableElements(previewDialogRef.current)
+        if (focusable.length === 0) return
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault()
+            last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first.focus()
+        }
+    }
+
+    useEffect(() => {
+        if (!previewingVersion) return undefined
+
+        previewPreviousFocusRef.current = document.activeElement
+        const frame = requestAnimationFrame(() => previewCloseButtonRef.current?.focus())
+
+        return () => {
+            cancelAnimationFrame(frame)
+            const previousFocus = previewPreviousFocusRef.current
+            previewPreviousFocusRef.current = null
+
+            requestAnimationFrame(() => {
+                if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {
+                    previousFocus.focus()
+                }
+            })
+        }
+    }, [previewingVersion])
     useEffect(() => {
         onPreviewDialogOpenChange?.(Boolean(previewingVersion))
     }, [onPreviewDialogOpenChange, previewingVersion])
@@ -174,11 +232,19 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen, onPrevie
             {/* Preview Modal */}
             {previewingVersion && (
                 <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="modal-card" style={{ width: 'min(900px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 48px)', backgroundColor: 'var(--surface)', borderRadius: '12px', boxShadow: '0 24px 48px rgba(0,0,0,0.5)', border: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div
+                        ref={previewDialogRef}
+                        className="modal-card"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="version-preview-title"
+                        onKeyDownCapture={handlePreviewKeyDown}
+                        style={{ width: 'min(900px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 48px)', backgroundColor: 'var(--surface)', borderRadius: '12px', boxShadow: '0 24px 48px rgba(0,0,0,0.5)', border: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                    >
                         
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', backgroundColor: 'var(--surface-soft)', borderBottom: '1px solid var(--border)', padding: '20px 24px' }}>
                             <div style={{ flex: 1, minWidth: '200px' }}>
-                                <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 id="version-preview-title" style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <Eye size={20} color="var(--accent)" />
                                     Preview Only - Read Only
                                 </h3>
@@ -195,10 +261,12 @@ const VersionHistoryPanel = ({ noteId, refreshTrigger, onClose, isOpen, onPrevie
                                 >
                                     <RotateCcw size={16} /> Restore This Version
                                 </button>
-                                <button className="icon-button" onClick={() => {
-                                    setPreviewingVersion(null)
-                                    setPreviewContent(null)
-                                }}>
+                                <button
+                                    ref={previewCloseButtonRef}
+                                    className="icon-button"
+                                    onClick={closePreview}
+                                    aria-label="Close version preview"
+                                >
                                     <X size={20} />
                                 </button>
                             </div>

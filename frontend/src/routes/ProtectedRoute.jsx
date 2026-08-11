@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { CommandPaletteProvider } from "../components/command-palette/CommandPaletteProvider"
+import { NotificationProvider } from "../context/NotificationContext"
 
 const ProtectedRoute = () => {
     const { isAuthenticated, isLoading } = useAuth()
@@ -21,7 +22,9 @@ const ProtectedRoute = () => {
     if (isAuthenticated) {
         return (
             <CommandPaletteProvider>
-                <Outlet />
+                <NotificationProvider>
+                    <Outlet />
+                </NotificationProvider>
             </CommandPaletteProvider>
         )
     }

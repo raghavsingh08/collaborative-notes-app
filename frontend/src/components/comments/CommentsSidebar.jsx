@@ -13,7 +13,7 @@ const getFocusableElements = (container) => {
         'input:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
     )).filter((element) => !element.hasAttribute("hidden"))
 }
-const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, editorSelection, onCommentCreated, onCommentDeleted, isOpen, onClose, onDeleteDialogOpenChange, onCreateDialogOpenChange }) => {
+const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setActiveThreadId, requestedThreadId, isRequestedThreadReady, onRequestedThreadResolved, editorSelection, onCommentCreated, onCommentDeleted, isOpen, onClose, onDeleteDialogOpenChange, onCreateDialogOpenChange }) => {
     const [threads, setThreads] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -36,6 +36,8 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
     const createDialogRef = useRef(null)
     const createCloseButtonRef = useRef(null)
     const createPreviousFocusRef = useRef(null)
+    const onRequestedThreadResolvedRef = useRef(onRequestedThreadResolved)
+    onRequestedThreadResolvedRef.current = onRequestedThreadResolved
     noteIdRef.current = noteId
 
     useEffect(() => {
@@ -394,6 +396,14 @@ const CommentsSidebar = ({ noteId, currentUser, noteOwner, activeThreadId, setAc
             setActiveThreadId(null)
         }
     }, [activeThreadId, threads, setActiveThreadId])
+
+    useEffect(() => {
+        if (!requestedThreadId || !isRequestedThreadReady || isLoading) return
+
+        const currentThreads = Array.isArray(threads) ? threads : []
+        const thread = currentThreads.find((item) => String(item?._id) === String(requestedThreadId)) || null
+        onRequestedThreadResolvedRef.current?.({ threadId: requestedThreadId, thread })
+    }, [isLoading, isRequestedThreadReady, requestedThreadId, threads])
     useEffect(() => {
         const handleEditorHover = (e) => {
             const { anchorId, isHovering } = e.detail;

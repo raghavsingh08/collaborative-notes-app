@@ -7,6 +7,7 @@ import { AvatarStack, Badge, CollaboratorAvatarGroup, EmptyState, ErrorState, Lo
 import { IconChevronDown, IconNote, IconPlus, IconSearch, IconUsers, IconMoreHorizontal } from "../components/ui/Icons"
 import { Menu } from "lucide-react"
 import UserMenu from "../components/ui/UserMenu"
+import NotificationBell from "../components/notifications/NotificationBell"
 import { formatDateTime, getInitials, getDisplayName } from "../components/ui/uiUtils"
 import usePageTitle from "../hooks/usePageTitle"
 import useWorkspacePresence from "../hooks/useWorkspacePresence"
@@ -237,9 +238,12 @@ const DashboardPage = () => {
             {/* ── Mobile Top Header (hidden on desktop) ── */}
             <header className="mobile-top-header">
                 <h1>{displayName}'s Workspace</h1>
-                <button className="mobile-menu-btn" onClick={() => setIsMobileNavOpen(true)} aria-label="Open menu">
-                    <Menu size={20} />
-                </button>
+                <div className="mobile-top-header-actions">
+                    <NotificationBell />
+                    <button className="mobile-menu-btn" onClick={() => setIsMobileNavOpen(true)} aria-label="Open menu">
+                        <Menu size={20} />
+                    </button>
+                </div>
             </header>
 
             {/* ── Mobile Backdrop ── */}
@@ -325,17 +329,20 @@ const DashboardPage = () => {
                             {activeFilter === "all" ? "Manage your notes, shared work, and collaboration." : `${filteredNotes.length} documents`}
                         </span>
                     </div>
-                    <label className="dashboard-search" htmlFor="search-notes">
-                        <IconSearch size={14} className="dashboard-search-icon" />
-                        <input
-                            id="search-notes"
-                            type="search"
-                            value={query}
-                            onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Search documents..."
-                            aria-label="Search notes"
-                        />
-                    </label>
+                    <div className="dashboard-header-actions">
+                        <label className="dashboard-search" htmlFor="search-notes">
+                            <IconSearch size={14} className="dashboard-search-icon" />
+                            <input
+                                id="search-notes"
+                                type="search"
+                                value={query}
+                                onChange={(event) => setQuery(event.target.value)}
+                                placeholder="Search documents..."
+                                aria-label="Search notes"
+                            />
+                        </label>
+                        <NotificationBell />
+                    </div>
                 </header>
 
                 <ErrorState message={error} />

@@ -25,6 +25,8 @@ import { CollaborationProvider, useCollaboration } from "../collaboration/Collab
 import CommentsSidebar from "../components/comments/CommentsSidebar"
 import VersionHistoryPanel from "../components/versions/VersionHistoryPanel"
 import ActivitySidebar from "../components/activity/ActivitySidebar"
+import NotificationBell from "../components/notifications/NotificationBell"
+import { useNotifications } from "../context/NotificationContext"
 import { History, Activity, MessageSquare } from "lucide-react"
 
 const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onEditorReady, onSelectionChange, onCommentClicked }) => {
@@ -458,7 +460,10 @@ const NoteEditorV2Page = () => {
     const [activeThreadId, setActiveThreadId] = useState(null)
     const [editorSelection, setEditorSelection] = useState(null)
     const [editorReadyVersion, setEditorReadyVersion] = useState(0)
+    const [notificationThreadTarget, setNotificationThreadTarget] = useState(null)
+    const [notificationTargetMessage, setNotificationTargetMessage] = useState("")
     const editorRef = useRef(null)
+    const notificationThreadTargetRef = useRef(null)
     const commentAnchorCleanupNoteIdRef = useRef(String(noteId))
     const pendingDeletedCommentAnchorsRef = useRef(null)
     const commentAnchorReconciliationRef = useRef({
@@ -554,6 +559,7 @@ const NoteEditorV2Page = () => {
 
     const { socketError, isConnected, isReconnecting } = useNoteSocketV2(noteId)
     const { setBlockingDialog, isOpen: isCommandPaletteOpen } = useCommandPalette()
+    const { isPanelOpen: isNotificationPanelOpen } = useNotifications()
     const saveStatus = getCombinedSaveStatus({
         isTitleSaving,
         isContentSaving,
@@ -1771,6 +1777,7 @@ const NoteEditorV2Page = () => {
         isCommentDeleteConfirmOpen ||
         isCommentCreateDialogOpen ||
         isVersionPreviewOpen ||
+        isNotificationPanelOpen ||
         isNavigatingAfterFlush
     )
 
@@ -1938,6 +1945,56 @@ const NoteEditorV2Page = () => {
         setIsHistoryOpen(false)
         setIsActivityOpen(false)
     }, [])
+
+    const selectCommentThread = useCallback((threadId) => {
+        setActiveThreadId(threadId)
+
+        if (threadId) {
+            requestAnimationFrame(() => {
+                editorRef.current?.scrollToComment(threadId)
+            })
+        }
+    }, [])
+
+    const handleNotificationThreadResolved = useCallback(({ threadId, thread }) => {
+        const target = notificationThreadTargetRef.current
+
+        if (!target || String(target.threadId) !== String(threadId)) return
+
+        notificationThreadTargetRef.current = null
+        setNotificationThreadTarget(null)
+
+        if (thread) {
+            setNotificationTargetMessage("")
+            selectCommentThread(threadId)
+            return
+        }
+
+        setActiveThreadId(null)
+        setNotificationTargetMessage("This comment thread is no longer available.")
+    }, [selectCommentThread])
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const threadId = params.get("panel") === "comments" ? params.get("thread")?.trim() : ""
+        const targetKey = threadId ? `${noteId}:${threadId}` : ""
+
+        if (!targetKey) {
+            notificationThreadTargetRef.current = null
+            setNotificationThreadTarget(null)
+            return
+        }
+        const target = { key: targetKey, threadId }
+        notificationThreadTargetRef.current = target
+        setNotificationThreadTarget(target)
+        setNotificationTargetMessage("")
+    }, [location.key, location.search, noteId])
+
+    useEffect(() => {
+        if (!notificationThreadTarget || isLoading || loadError) return
+
+        openCommentsPanel()
+    }, [isLoading, loadError, notificationThreadTarget, openCommentsPanel])
 
     const openActivityPanel = useCallback(() => {
         setIsActivityOpen(true)
@@ -2448,6 +2505,7 @@ const NoteEditorV2Page = () => {
 
                     <div className="editor-toolbar-actions">
                         {/* Comments button removed from main header, moved permanently to More menu */}
+                        <NotificationBell />
 
                         <button
                             className="ghost-button collaboration-entry-button hide-on-medium"
@@ -2585,6 +2643,7 @@ const NoteEditorV2Page = () => {
                     <section className="document-surface" aria-labelledby="title">
                         <ErrorState message={error} />
                         <ErrorState message={socketError} />
+                        <ErrorState message={notificationTargetMessage} />
 
                         <input
                             id="title"
@@ -2645,12 +2704,10 @@ const NoteEditorV2Page = () => {
                             currentUser={user} 
                             noteOwner={noteOwner}
                             activeThreadId={activeThreadId}
-                            setActiveThreadId={(id) => {
-                                setActiveThreadId(id)
-                                if (id && editorRef.current) {
-                                    editorRef.current.scrollToComment(id)
-                                }
-                            }}
+                            setActiveThreadId={selectCommentThread}
+                            requestedThreadId={notificationThreadTarget?.threadId || null}
+                            isRequestedThreadReady={!isLoading && !loadError}
+                            onRequestedThreadResolved={handleNotificationThreadResolved}
                             editorSelection={editorSelection}
                             onCommentCreated={(anchorId) => {
                                 registerPendingCommentAnchor(anchorId)

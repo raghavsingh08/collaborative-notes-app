@@ -4,6 +4,7 @@ import { updatePassword, updateProfile } from "../api/auth.api"
 import { ErrorState, SuccessNotice } from "../components/ui/AppUI"
 import { IconArrowLeft, IconMoon, IconSun } from "../components/ui/Icons"
 import PasswordField from "../components/ui/PasswordField"
+import NotificationBell from "../components/notifications/NotificationBell"
 import { useAuth } from "../context/AuthContext"
 import { useTheme } from "../context/ThemeContext"
 import usePageTitle from "../hooks/usePageTitle"
@@ -137,6 +138,9 @@ const SettingsPage = () => {
                 <div>
                     <p className="eyebrow">Workspace settings</p>
                     <h1>Settings</h1>
+                </div>
+                <div className="settings-header-actions">
+                    <NotificationBell />
                 </div>
             </header>
 

@@ -8,6 +8,8 @@ const getSocketServer = () => ioInstance
 
 const getV2NoteRoom = (noteId) => `note:v2:${String(noteId).trim()}`
 
+const getUserNotificationRoom = (userId) => `user:${String(userId).trim()}`
+
 const emitNoteRestored = ({ noteId, versionId, restoredBy }) => {
     const io = getSocketServer()
 
@@ -84,11 +86,33 @@ const emitCommentUpdate = ({ noteId, threadId, replyId, anchorId, action, update
     io.to(getV2NoteRoom(noteId)).emit("comments:updated", payload)
 }
 
+// Notification sockets are recipient-scoped invalidation hints; clients refetch from MongoDB.
+const emitNotificationsUpdated = ({ recipientId, notificationId, type } = {}) => {
+    const io = getSocketServer()
+
+    if (!io || !recipientId) {
+        return
+    }
+
+    const payload = {}
+
+    if (notificationId) {
+        payload.notificationId = String(notificationId)
+    }
+
+    if (type) {
+        payload.type = type
+    }
+
+    io.to(getUserNotificationRoom(recipientId)).emit("notifications:updated", payload)
+}
 export {
     emitActivityUpdated,
     emitCommentUpdate,
     emitNoteRestored,
     emitNoteTitleUpdated,
+    emitNotificationsUpdated,
     getSocketServer,
+    getUserNotificationRoom,
     setSocketServer
 }

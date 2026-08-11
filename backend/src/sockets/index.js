@@ -3,7 +3,7 @@ import { Server } from "socket.io"
 import User from "../models/user.model.js"
 import { corsOptions } from "../config/cors.js"
 import { registerNoteSocketHandlers } from "./note.socket.js"
-import { setSocketServer } from "./socketState.js"
+import { getUserNotificationRoom, setSocketServer } from "./socketState.js"
 
 const parseCookies = (cookieHeader = "") => {
     return cookieHeader.split(";").reduce((cookies, cookie) => {
@@ -53,6 +53,7 @@ const initializeSocket = (httpServer) => {
     })
 
     io.on("connection", (socket) => {
+        socket.join(getUserNotificationRoom(socket.user._id))
         registerNoteSocketHandlers(io, socket)
     })
 

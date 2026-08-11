@@ -2,6 +2,7 @@ import mongoose from "mongoose"
 import Note from "../models/note.model.js"
 import User from "../models/user.model.js"
 import { logActivity } from "../utils/activityLogger.js"
+import { createNotificationBestEffort } from "../utils/notificationService.js"
 import { createNoteVersionSnapshot } from "../utils/noteVersionSnapshots.js"
 import { emitNoteTitleUpdated } from "../sockets/socketState.js"
 import { ApiError } from "../utils/ApiError.js"
@@ -323,19 +324,38 @@ const shareNote = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Owner cannot share a note with themselves")
     }
 
-    const isAlreadyShared = note.sharedWith.some((userId) =>
-        userId.equals(userToShareWith._id)
+    const sharedNote = await Note.findOneAndUpdate(
+        {
+            _id: note._id,
+            owner: req.user._id,
+            sharedWith: { $ne: userToShareWith._id }
+        },
+        {
+            $addToSet: {
+                sharedWith: userToShareWith._id
+            }
+        },
+        {
+            returnDocument: "after",
+            runValidators: true
+        }
     )
 
-    if (isAlreadyShared) {
+    if (!sharedNote) {
+        const currentNote = await Note.exists({
+            _id: note._id,
+            owner: req.user._id
+        })
+
+        if (!currentNote) {
+            throw new ApiError(404, "Note not found")
+        }
+
         throw new ApiError(409, "Note is already shared with this user")
     }
 
-    note.sharedWith.push(userToShareWith._id)
-    await note.save()
-
-    await recordActivity({
-        noteId: note._id,
+    const activity = await recordActivity({
+        noteId: sharedNote._id,
         actor: req.user,
         type: "COLLABORATOR_ADDED",
         metadata: {
@@ -344,9 +364,17 @@ const shareNote = asyncHandler(async (req, res) => {
         }
     })
 
+    await createNotificationBestEffort({
+        recipientId: userToShareWith._id,
+        actor: req.user,
+        type: "NOTE_SHARED",
+        noteId: sharedNote._id,
+        sourceActivityId: activity._id
+    })
+
     return res
         .status(200)
-        .json(new ApiResponse(200, note, "Note shared successfully"))
+        .json(new ApiResponse(200, sharedNote, "Note shared successfully"))
 })
 
 const unshareNote = asyncHandler(async (req, res) => {

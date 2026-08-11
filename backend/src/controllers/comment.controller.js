@@ -3,6 +3,7 @@ import CommentThread from "../models/commentThread.model.js"
 import Note from "../models/note.model.js"
 import { emitCommentUpdate } from "../sockets/socketState.js"
 import { logActivity } from "../utils/activityLogger.js"
+import { createNotificationBestEffort } from "../utils/notificationService.js"
 import {
     getThreadReadState,
     markThreadAsRead
@@ -160,6 +161,29 @@ const canManageThreadStatus = (note, thread, userId) => {
 }
 
 
+const notifyRootThreadCreator = ({
+    activity,
+    actor,
+    replyId,
+    thread,
+    type
+}) => {
+    const rootComment = getRootComment(thread)
+
+    if (!rootComment?.createdBy || isSameId(rootComment.createdBy, actor?._id)) {
+        return Promise.resolve({ created: false })
+    }
+
+    return createNotificationBestEffort({
+        recipientId: rootComment.createdBy,
+        actor,
+        type,
+        noteId: thread.noteId,
+        threadId: thread._id,
+        replyId,
+        sourceActivityId: activity._id
+    })
+}
 const getThreadLatestActivity = (thread) => {
     let latestActivityAt = thread.createdAt || new Date(0)
     let latestActivityBy = thread.createdBy
@@ -367,7 +391,7 @@ const addCommentReply = asyncHandler(async (req, res) => {
         updatedBy: req.user._id
     })
 
-    await recordActivity({
+    const activity = await recordActivity({
         noteId: updatedThread.noteId,
         actor: req.user,
         type: "REPLY_CREATED",
@@ -375,6 +399,14 @@ const addCommentReply = asyncHandler(async (req, res) => {
             threadId: updatedThread._id,
             replyId: reply?._id
         }
+    })
+
+    await notifyRootThreadCreator({
+        activity,
+        actor: req.user,
+        replyId: reply?._id,
+        thread: updatedThread,
+        type: "COMMENT_REPLY"
     })
 
     return res
@@ -437,13 +469,20 @@ const resolveCommentThread = asyncHandler(async (req, res) => {
         updatedBy: req.user._id
     })
 
-    await recordActivity({
+    const activity = await recordActivity({
         noteId: updatedThread.noteId,
         actor: req.user,
         type: "COMMENT_RESOLVED",
         metadata: {
             threadId: updatedThread._id
         }
+    })
+
+    await notifyRootThreadCreator({
+        activity,
+        actor: req.user,
+        thread: updatedThread,
+        type: "COMMENT_RESOLVED"
     })
 
     return res
@@ -506,13 +545,20 @@ const reopenCommentThread = asyncHandler(async (req, res) => {
         updatedBy: req.user._id
     })
 
-    await recordActivity({
+    const activity = await recordActivity({
         noteId: updatedThread.noteId,
         actor: req.user,
         type: "COMMENT_REOPENED",
         metadata: {
             threadId: updatedThread._id
         }
+    })
+
+    await notifyRootThreadCreator({
+        activity,
+        actor: req.user,
+        thread: updatedThread,
+        type: "COMMENT_REOPENED"
     })
 
     return res

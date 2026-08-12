@@ -1,7 +1,36 @@
 import { useEffect, useRef } from "react"
-import { Bell, CheckCheck, RefreshCw, X } from "lucide-react"
+import { Bell, CheckCheck, CheckCircle2, MessageCircle, RefreshCw, RotateCcw, Share2, X } from "lucide-react"
 import { formatRelativeTime } from "../../utils/activityFormatter"
 import { formatNotificationMessage } from "../../utils/notificationFormatter"
+
+const getNotificationIcon = (type) => {
+    switch (type) {
+        case "NOTE_SHARED":
+            return Share2
+        case "COMMENT_REPLY":
+            return MessageCircle
+        case "COMMENT_RESOLVED":
+            return CheckCircle2
+        case "COMMENT_REOPENED":
+            return RotateCcw
+        default:
+            return Bell
+    }
+}
+
+const NotificationSkeleton = () => (
+    <div className="notification-skeleton-list" aria-label="Loading notifications">
+        {[0, 1, 2, 3].map((item) => (
+            <div className="notification-skeleton-row" key={item} aria-hidden="true">
+                <span className="notification-skeleton-icon" />
+                <span className="notification-skeleton-lines">
+                    <span />
+                    <span />
+                </span>
+            </div>
+        ))}
+    </div>
+)
 
 const NotificationPanel = ({
     error,
@@ -59,8 +88,8 @@ const NotificationPanel = ({
             aria-labelledby="notification-panel-title"
         >
             <header className="notification-panel-header">
-                <div>
-                    <p className="eyebrow">Updates</p>
+                <div className="notification-panel-heading">
+                    <p className="eyebrow">Inbox</p>
                     <h2 id="notification-panel-title">Notifications</h2>
                 </div>
                 <div className="notification-panel-actions">
@@ -74,7 +103,7 @@ const NotificationPanel = ({
                         <span>{isMarkingAll ? "Marking..." : "Mark all read"}</span>
                     </button>
                     <button
-                        className="icon-button"
+                        className="icon-button notification-close-button"
                         type="button"
                         onClick={onClose}
                         aria-label="Close notifications"
@@ -95,14 +124,15 @@ const NotificationPanel = ({
             )}
 
             <div className="notification-panel-list" aria-live="polite">
-                {isLoading && !hasNotifications && (
-                    <p className="notification-panel-state">Loading notifications...</p>
-                )}
+                {isLoading && !hasNotifications && <NotificationSkeleton />}
 
                 {!isLoading && !hasNotifications && !error && (
                     <div className="notification-panel-empty">
-                        <Bell size={22} aria-hidden="true" />
-                        <p>No notifications yet</p>
+                        <span className="notification-empty-icon" aria-hidden="true"><Bell size={20} /></span>
+                        <div>
+                            <p>No notifications yet</p>
+                            <span>Updates from collaboration will appear here.</span>
+                        </div>
                     </div>
                 )}
 
@@ -111,6 +141,7 @@ const NotificationPanel = ({
                     const isPending = pendingReadIds.has(String(notification._id))
                     const message = formatNotificationMessage(notification)
                     const timestamp = formatRelativeTime(notification.createdAt)
+                    const TypeIcon = getNotificationIcon(notification.type)
 
                     return (
                         <button
@@ -121,11 +152,14 @@ const NotificationPanel = ({
                             disabled={isPending}
                             aria-label={`${message}. ${timestamp}.${isUnread ? " Unread." : " Read."}`}
                         >
-                            <span className="notification-row-indicator" aria-hidden="true" />
+                            <span className="notification-type-icon" aria-hidden="true">
+                                <TypeIcon size={16} />
+                            </span>
                             <span className="notification-row-content">
                                 <strong>{message}</strong>
                                 <span title={new Date(notification.createdAt).toLocaleString()}>{timestamp}</span>
                             </span>
+                            <span className="notification-row-indicator" aria-hidden="true" />
                         </button>
                     )
                 })}
@@ -134,7 +168,7 @@ const NotificationPanel = ({
             {nextCursor && (
                 <footer className="notification-panel-footer">
                     <button
-                        className="ghost-button"
+                        className="ghost-button notification-load-more-button"
                         type="button"
                         onClick={onLoadMore}
                         disabled={isLoadingMore}

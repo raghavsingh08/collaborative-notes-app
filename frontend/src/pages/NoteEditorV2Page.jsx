@@ -20,6 +20,12 @@ import usePageTitle from "../hooks/usePageTitle"
 import useEditorShortcuts from "../hooks/useEditorShortcuts"
 import { useCommandPalette, useCommandRegistration } from "../hooks/useCommandPalette"
 import { createSettingsNavigationOptions } from "../utils/settingsNavigation"
+import {
+    createExportFilename,
+    downloadTextFile,
+    serializeNoteToMarkdown,
+    serializeNoteToPlainText
+} from "../utils/noteExport"
 import TipTapEditor from '../components/editor/TipTapEditor'
 import { CollaborationProvider, useCollaboration } from "../collaboration/CollaborationProvider"
 import CommentsSidebar from "../components/comments/CommentsSidebar"
@@ -27,7 +33,7 @@ import VersionHistoryPanel from "../components/versions/VersionHistoryPanel"
 import ActivitySidebar from "../components/activity/ActivitySidebar"
 import NotificationBell from "../components/notifications/NotificationBell"
 import { useNotifications } from "../context/NotificationContext"
-import { History, Activity, MessageSquare } from "lucide-react"
+import { Download, History, Activity, MessageSquare } from "lucide-react"
 
 const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onEditorReady, onSelectionChange, onCommentClicked }) => {
     const { ydoc, awareness, syncStatus } = useCollaboration()
@@ -1800,6 +1806,56 @@ const NoteEditorV2Page = () => {
         !isNavigatingAfterFlush
     )
 
+    const isExportReady = Boolean(
+        isEditorShortcutEnabled &&
+        typeof editorRef.current?.getJSON === "function"
+    )
+
+    const handleExport = useCallback((format) => {
+        if (!isExportReady) {
+            setError("Couldn't prepare the export. Please try again.")
+            return false
+        }
+
+        try {
+            const contentJson = editorRef.current.getJSON()
+
+            if (!contentJson) {
+                throw new Error("Editor snapshot is unavailable")
+            }
+
+            const isMarkdown = format === "markdown"
+            const exportedContent = isMarkdown
+                ? serializeNoteToMarkdown(contentJson)
+                : serializeNoteToPlainText(contentJson)
+            const extension = isMarkdown ? "md" : "txt"
+            const mimeType = isMarkdown
+                ? "text/markdown;charset=utf-8"
+                : "text/plain;charset=utf-8"
+
+            downloadTextFile(
+                exportedContent,
+                createExportFilename(titleRef.current, extension),
+                mimeType
+            )
+
+            return true
+        } catch {
+            setError("Couldn't prepare the export. Please try again.")
+            return false
+        }
+    }, [isExportReady])
+
+    const handleExportMarkdown = useCallback(
+        () => handleExport("markdown"),
+        [handleExport]
+    )
+
+    const handleExportPlainText = useCallback(
+        () => handleExport("plain-text"),
+        [handleExport]
+    )
+
     const handleManualSaveShortcut = useCallback(
         () => handleSave("manual"),
         [handleSave]
@@ -2168,6 +2224,26 @@ const NoteEditorV2Page = () => {
                 execute: () => handleSave("manual")
             },
             {
+                id: "editor.export-markdown",
+                label: "Export as Markdown",
+                keywords: ["export", "download", "markdown", "md"],
+                group: "Export",
+                icon: Download,
+                hidden: !isExportReady,
+                closeBeforeExecute: true,
+                execute: handleExportMarkdown
+            },
+            {
+                id: "editor.export-plain-text",
+                label: "Export as Plain Text",
+                keywords: ["export", "download", "text", "txt", "plain"],
+                group: "Export",
+                icon: Download,
+                hidden: !isExportReady,
+                closeBeforeExecute: true,
+                execute: handleExportPlainText
+            },
+            {
                 id: "editor.open-comments",
                 label: "Open Comments",
                 keywords: ["discussion", "threads"],
@@ -2218,11 +2294,14 @@ const NoteEditorV2Page = () => {
         ]
     }, [
         closeOpenPanel,
+        handleExportMarkdown,
+        handleExportPlainText,
         handleSave,
         isActivityOpen,
         isCommentsOpen,
         isHistoryOpen,
         isLoading,
+        isExportReady,
         isNavigatingAfterFlush,
         isOwner,
         loadError,
@@ -2605,6 +2684,31 @@ const NoteEditorV2Page = () => {
                                         Share
                                     </button>
                                     <div className="menu-separator show-on-medium" aria-hidden="true" />
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={!isExportReady}
+                                        onClick={() => {
+                                            setIsEditorMoreOpen(false)
+                                            handleExportMarkdown()
+                                        }}
+                                    >
+                                        <Download size={14} />
+                                        Export as Markdown
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={!isExportReady}
+                                        onClick={() => {
+                                            setIsEditorMoreOpen(false)
+                                            handleExportPlainText()
+                                        }}
+                                    >
+                                        <Download size={14} />
+                                        Export as Plain Text
+                                    </button>
+                                    <div className="menu-separator" aria-hidden="true" />
                                     <button
                                         type="button"
                                         role="menuitem"

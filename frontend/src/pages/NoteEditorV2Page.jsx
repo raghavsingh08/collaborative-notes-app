@@ -21,6 +21,7 @@ import useEditorShortcuts from "../hooks/useEditorShortcuts"
 import { useCommandPalette, useCommandRegistration } from "../hooks/useCommandPalette"
 import { createSettingsNavigationOptions } from "../utils/settingsNavigation"
 import {
+    buildPrintDocument,
     createExportFilename,
     downloadTextFile,
     serializeNoteToMarkdown,
@@ -33,7 +34,7 @@ import VersionHistoryPanel from "../components/versions/VersionHistoryPanel"
 import ActivitySidebar from "../components/activity/ActivitySidebar"
 import NotificationBell from "../components/notifications/NotificationBell"
 import { useNotifications } from "../context/NotificationContext"
-import { Download, History, Activity, MessageSquare } from "lucide-react"
+import { Download, History, Activity, MessageSquare, Printer } from "lucide-react"
 
 const CollaborativeTipTap = ({ initialContent, initialContentJson, hasLoaded, onUpdate, editorRef, onEditorReady, onSelectionChange, onCommentClicked }) => {
     const { ydoc, awareness, syncStatus } = useCollaboration()
@@ -461,6 +462,7 @@ const NoteEditorV2Page = () => {
     const [isCommentCreateDialogOpen, setIsCommentCreateDialogOpen] = useState(false)
     const [isVersionPreviewOpen, setIsVersionPreviewOpen] = useState(false)
     const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false)
+    const [isPreparingPrint, setIsPreparingPrint] = useState(false)
     
     // Step 17D Integration State
     const [activeThreadId, setActiveThreadId] = useState(null)
@@ -469,6 +471,7 @@ const NoteEditorV2Page = () => {
     const [notificationThreadTarget, setNotificationThreadTarget] = useState(null)
     const [notificationTargetMessage, setNotificationTargetMessage] = useState("")
     const editorRef = useRef(null)
+    const isPreparingPrintRef = useRef(false)
     const notificationThreadTargetRef = useRef(null)
     const commentAnchorCleanupNoteIdRef = useRef(String(noteId))
     const pendingDeletedCommentAnchorsRef = useRef(null)
@@ -1810,6 +1813,7 @@ const NoteEditorV2Page = () => {
         isEditorShortcutEnabled &&
         typeof editorRef.current?.getJSON === "function"
     )
+    const isPrintReady = isExportReady && !isPreparingPrint
 
     const handleExport = useCallback((format) => {
         if (!isExportReady) {
@@ -1855,6 +1859,72 @@ const NoteEditorV2Page = () => {
         () => handleExport("plain-text"),
         [handleExport]
     )
+
+    const handlePrintNote = useCallback(() => {
+        if (!isExportReady) {
+            setError("Couldn't prepare the print view. Please try again.")
+            return false
+        }
+
+        if (isPreparingPrintRef.current) return false
+
+        let printWindow = null
+        const finishPreparingPrint = () => {
+            isPreparingPrintRef.current = false
+            if (isMountedRef.current) setIsPreparingPrint(false)
+        }
+
+        try {
+            printWindow = window.open("", "_blank")
+
+            if (!printWindow) {
+                setError("Couldn't open the print preview. Please allow pop-ups and try again.")
+                return false
+            }
+
+            isPreparingPrintRef.current = true
+            setIsPreparingPrint(true)
+
+            const contentJson = editorRef.current?.getJSON?.()
+            if (!contentJson) {
+                throw new Error("Editor snapshot is unavailable")
+            }
+
+            printWindow.document.open()
+            printWindow.document.write(buildPrintDocument(titleRef.current, contentJson))
+            printWindow.document.close()
+
+            const schedulePrint = typeof printWindow.requestAnimationFrame === "function"
+                ? printWindow.requestAnimationFrame.bind(printWindow)
+                : window.requestAnimationFrame
+
+            schedulePrint(() => {
+                try {
+                    if (printWindow.closed) {
+                        throw new Error("Print window closed before it could render")
+                    }
+
+                    printWindow.focus()
+                    printWindow.print()
+                } catch {
+                    if (isMountedRef.current) {
+                        setError("Couldn't prepare the print view. Please try again.")
+                    }
+                } finally {
+                    finishPreparingPrint()
+                }
+            })
+
+            return true
+        } catch {
+            if (printWindow && !printWindow.closed) {
+                printWindow.close()
+            }
+            finishPreparingPrint()
+            setError("Couldn't prepare the print view. Please try again.")
+            return false
+        }
+    }, [isExportReady])
 
     const handleManualSaveShortcut = useCallback(
         () => handleSave("manual"),
@@ -2224,6 +2294,16 @@ const NoteEditorV2Page = () => {
                 execute: () => handleSave("manual")
             },
             {
+                id: "editor.print-note",
+                label: "Print / Save as PDF",
+                keywords: ["export", "print", "pdf", "save", "download"],
+                group: "Export",
+                icon: Printer,
+                hidden: !isPrintReady,
+                closeBeforeExecute: true,
+                execute: handlePrintNote
+            },
+            {
                 id: "editor.export-markdown",
                 label: "Export as Markdown",
                 keywords: ["export", "download", "markdown", "md"],
@@ -2294,6 +2374,7 @@ const NoteEditorV2Page = () => {
         ]
     }, [
         closeOpenPanel,
+        handlePrintNote,
         handleExportMarkdown,
         handleExportPlainText,
         handleSave,
@@ -2302,6 +2383,7 @@ const NoteEditorV2Page = () => {
         isHistoryOpen,
         isLoading,
         isExportReady,
+        isPrintReady,
         isNavigatingAfterFlush,
         isOwner,
         loadError,
@@ -2684,6 +2766,18 @@ const NoteEditorV2Page = () => {
                                         Share
                                     </button>
                                     <div className="menu-separator show-on-medium" aria-hidden="true" />
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={!isPrintReady}
+                                        onClick={() => {
+                                            setIsEditorMoreOpen(false)
+                                            handlePrintNote()
+                                        }}
+                                    >
+                                        <Printer size={14} />
+                                        Print / Save as PDF
+                                    </button>
                                     <button
                                         type="button"
                                         role="menuitem"

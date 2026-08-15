@@ -1,25 +1,49 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import socket from "../api/socket"
 
 const useNoteSocketV2 = (noteId) => {
     const [socketError, setSocketError] = useState("")
     const [isConnected, setIsConnected] = useState(socket.connected)
     const [isReconnecting, setIsReconnecting] = useState(false)
+    const currentNoteIdRef = useRef(noteId)
+    const lastJoinedConnectionRef = useRef(null)
+
+    currentNoteIdRef.current = noteId
 
     useEffect(() => {
         if (!noteId) {
             return undefined
         }
 
-        if (!socket.connected) {
-            socket.connect()
-        } else {
-            setIsConnected(true)
+        let isActive = true
+
+        const joinCurrentNote = () => {
+            const currentNoteId = currentNoteIdRef.current
+            const socketId = socket.id
+
+            if (!isActive || !currentNoteId || !socket.connected || !socketId) {
+                return
+            }
+
+            const alreadyJoined = lastJoinedConnectionRef.current
+            if (
+                alreadyJoined?.socketId === socketId &&
+                alreadyJoined.noteId === String(currentNoteId)
+            ) {
+                return
+            }
+
+            lastJoinedConnectionRef.current = {
+                socketId,
+                noteId: String(currentNoteId)
+            }
+            socket.emit("v2:note:join", { noteId: currentNoteId })
         }
 
         const handleConnect = () => {
             setIsConnected(true)
             setIsReconnecting(false)
+            joinCurrentNote()
         }
         
         const handleDisconnect = (reason) => {
@@ -43,17 +67,28 @@ const useNoteSocketV2 = (noteId) => {
         socket.on("disconnect", handleDisconnect)
         socket.on("connect_error", handleConnectError)
 
-        // Emit V2 join event
-        socket.emit("v2:note:join", { noteId })
-
-        const handleJoined = (payload) => {
+        const handleJoined = () => {
             // Join acknowledged
         }
         socket.on("v2:note:joined", handleJoined)
 
+        if (socket.connected) {
+            setIsConnected(true)
+            joinCurrentNote()
+        } else {
+            socket.connect()
+        }
+
         return () => {
-            // Emit V2 leave event
-            socket.emit("v2:note:leave", { noteId })
+            isActive = false
+
+            if (socket.connected) {
+                socket.emit("v2:note:leave", { noteId })
+            }
+
+            if (lastJoinedConnectionRef.current?.noteId === String(noteId)) {
+                lastJoinedConnectionRef.current = null
+            }
             
             socket.off("connect", handleConnect)
             socket.off("disconnect", handleDisconnect)

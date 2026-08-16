@@ -103,6 +103,16 @@ describe("V2 note-room socket routing", () => {
         await noCommentUpdate
     })
 
+    it("rejects a malformed V2 note ID without disconnecting the client", async () => {
+        const user = await createTestUser()
+        const socket = createSocketAs(server.url, user)
+        const malformedNoteId = "not-an-object-id"
+        await waitForConnect(socket)
+
+        await expect(joinNote(socket, malformedNoteId)).rejects.toBeInstanceOf(Error)
+        expect(socket.connected).toBe(true)
+        expect(server.io.sockets.adapter.rooms.get(getV2Room(malformedNoteId))?.has(socket.id) || false).toBe(false)
+    })
     it("rejects a join to a valid-looking nonexistent note", async () => {
         const user = await createTestUser()
         const socket = createSocketAs(server.url, user)

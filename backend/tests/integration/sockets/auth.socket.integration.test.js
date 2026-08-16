@@ -1,6 +1,13 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest"
 import { getUserNotificationRoom } from "../../../src/sockets/socketState.js"
-import { createSocket, createSocketAs, disconnectTrackedSockets, waitForConnect, waitForConnectError } from "../../helpers/socket.js"
+import {
+    createSocket,
+    createSocketAs,
+    disconnectTrackedSockets,
+    waitForConnect,
+    waitForConnectError
+} from "../../helpers/socket.js"
+import { accessTokenFor, expiredAccessTokenFor } from "../../helpers/auth.js"
 import { createTestUser } from "../../helpers/factories.js"
 import { clearTestDB, closeTestDB, connectTestDB } from "../../setup/testDb.js"
 import { startTestSocketServer, stopTestSocketServer } from "../../setup/socketTestServer.js"
@@ -43,6 +50,45 @@ describe("socket authentication", () => {
         const error = await waitForConnectError(socket)
 
         expect(error).toBeInstanceOf(Error)
+        expect(socket.connected).toBe(false)
+        expect(server.io.sockets.adapter.rooms.has(getUserNotificationRoom(user._id))).toBe(false)
+    })
+
+    it("rejects a malformed JWT without retaining connection listeners", async () => {
+        const user = await createTestUser()
+        const socket = createSocket(server.url, {
+            extraHeaders: { Cookie: "accessToken=not-a-jwt" }
+        })
+
+        const error = await waitForConnectError(socket)
+
+        expect(error).toBeInstanceOf(Error)
+        expect(socket.connected).toBe(false)
+        expect(socket.listeners("connect")).toHaveLength(0)
+        expect(socket.listeners("connect_error")).toHaveLength(0)
+        expect(server.io.sockets.adapter.rooms.has(getUserNotificationRoom(user._id))).toBe(false)
+    })
+
+    it("rejects an expired JWT through the normal cookie path", async () => {
+        const user = await createTestUser()
+        const socket = createSocket(server.url, {
+            extraHeaders: { Cookie: `accessToken=${expiredAccessTokenFor(user)}` }
+        })
+
+        await expect(waitForConnectError(socket)).resolves.toBeInstanceOf(Error)
+        expect(socket.connected).toBe(false)
+        expect(server.io.sockets.adapter.rooms.has(getUserNotificationRoom(user._id))).toBe(false)
+    })
+
+    it("rejects a valid JWT when its user has been deleted", async () => {
+        const user = await createTestUser()
+        const validToken = accessTokenFor(user)
+        await user.deleteOne()
+        const socket = createSocket(server.url, {
+            extraHeaders: { Cookie: `accessToken=${validToken}` }
+        })
+
+        await expect(waitForConnectError(socket)).resolves.toBeInstanceOf(Error)
         expect(socket.connected).toBe(false)
         expect(server.io.sockets.adapter.rooms.has(getUserNotificationRoom(user._id))).toBe(false)
     })

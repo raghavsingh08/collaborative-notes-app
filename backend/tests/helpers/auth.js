@@ -1,14 +1,20 @@
 import jwt from "jsonwebtoken"
 
-const accessTokenFor = (user) => jwt.sign(
+const accessTokenFor = (user, options = {}) => jwt.sign(
     { _id: String(user._id) },
     process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: process.env.ACCESS_TOKEN_EXPIRY }
+    {
+        expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
+        ...options
+    }
 )
+
+const expiredAccessTokenFor = (user) => accessTokenFor(user, { expiresIn: -60 })
 
 const authHeaderFor = (user) => `Bearer ${accessTokenFor(user)}`
 
 export {
     accessTokenFor,
-    authHeaderFor
+    authHeaderFor,
+    expiredAccessTokenFor
 }

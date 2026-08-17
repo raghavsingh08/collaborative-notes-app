@@ -98,7 +98,7 @@ const releaseV2YDocIfRoomEmpty = (io, noteId, room, leavingSocketId = null) => {
         .length
 
     if (remainingSocketCount === 0) {
-        releaseAuthoritativeYDoc(noteId)
+        void releaseAuthoritativeYDoc(noteId)
     }
 }
 

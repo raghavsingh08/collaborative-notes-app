@@ -3,7 +3,10 @@ import Note from "../models/note.model.js"
 import NoteVersion from "../models/noteVersion.model.js"
 import { emitNoteRestored } from "../sockets/socketState.js"
 import { logActivity } from "../utils/activityLogger.js"
-import { releaseAuthoritativeYDoc } from "../utils/yjsNoteState.js"
+import {
+    releaseAuthoritativeYDoc,
+    waitForYjsPersistence
+} from "../utils/yjsNoteState.js"
 import {
     createNoteVersionSnapshot,
     pruneNoteVersions
@@ -142,8 +145,12 @@ const restoreNoteVersion = asyncHandler(async (req, res) => {
     const note = await getAccessibleNoteOrThrow(noteId, req.user._id)
     const version = await getVersionForNoteOrThrow(noteId, versionId)
 
+    await waitForYjsPersistence(note._id)
+
+    const currentNote = await getAccessibleNoteOrThrow(noteId, req.user._id)
+
     await createNoteVersionSnapshot({
-        note,
+        note: currentNote,
         createdBy: req.user._id,
         reason: "pre_restore",
         skipIfDuplicate: false
@@ -151,8 +158,8 @@ const restoreNoteVersion = asyncHandler(async (req, res) => {
 
     const restoredNote = await Note.findOneAndUpdate(
         {
-            _id: note._id,
-            $and: [getContentRevisionMatch(normalizeContentRevision(note.contentRevision))]
+            _id: currentNote._id,
+            $and: [getContentRevisionMatch(normalizeContentRevision(currentNote.contentRevision))]
         },
         {
             $set: {
@@ -171,10 +178,10 @@ const restoreNoteVersion = asyncHandler(async (req, res) => {
     )
 
     if (!restoredNote) {
-        const currentNote = await Note.findById(note._id).select("contentRevision")
+        const latestNote = await Note.findById(currentNote._id).select("contentRevision")
 
-        if (currentNote) {
-            throw createContentRevisionConflictError(currentNote.contentRevision)
+        if (latestNote) {
+            throw createContentRevisionConflictError(latestNote.contentRevision)
         }
 
         throw new ApiError(404, "Note not found")
@@ -182,7 +189,7 @@ const restoreNoteVersion = asyncHandler(async (req, res) => {
 
     await pruneNoteVersions(restoredNote._id)
 
-    releaseAuthoritativeYDoc(restoredNote._id)
+    await releaseAuthoritativeYDoc(restoredNote._id)
     emitNoteRestored({
         noteId: restoredNote._id,
         versionId: version._id,

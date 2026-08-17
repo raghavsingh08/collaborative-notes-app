@@ -9,6 +9,7 @@ const MIN_PERSISTABLE_STATE_BYTES = 2
 
 const activeYjsDocs = new Map()
 const loadingYjsDocs = new Map()
+const yjsPersistenceChains = new Map()
 
 const noteContentSchema = new Schema({
     nodes: {
@@ -163,6 +164,36 @@ const createEntry = (noteId, ydoc, lastPersistedState = null) => ({
     ydoc,
     lastPersistedState
 })
+
+const enqueueYjsPersistence = (noteId, operation) => {
+    const normalizedNoteId = String(noteId)
+    const previous = yjsPersistenceChains.get(normalizedNoteId) || Promise.resolve()
+    const current = previous.then(operation)
+    const recovered = current.catch((error) => {
+        console.error("Failed to persist Yjs state", {
+            noteId: normalizedNoteId,
+            message: error?.message
+        })
+    })
+
+    yjsPersistenceChains.set(normalizedNoteId, recovered)
+
+    recovered.then(() => {
+        if (yjsPersistenceChains.get(normalizedNoteId) === recovered) {
+            yjsPersistenceChains.delete(normalizedNoteId)
+        }
+    })
+
+    return current
+}
+
+const waitForYjsPersistence = async (noteId) => {
+    const pendingPersistence = yjsPersistenceChains.get(String(noteId))
+
+    if (pendingPersistence) {
+        await pendingPersistence
+    }
+}
 
 const persistYDocState = async (entry) => {
     const encodedState = encodeYDoc(entry.ydoc)
@@ -323,7 +354,7 @@ const applyAndPersistYjsUpdate = async (note, update) => {
     Y.applyUpdate(entry.ydoc, updateBuffer)
 
     return {
-        persisted: await persistYDocState(entry),
+        persisted: await enqueueYjsPersistence(entry.noteId, () => persistYDocState(entry)),
         reason: "ok"
     }
 }
@@ -339,14 +370,26 @@ const getEncodedYjsState = async (note) => {
     return encodedState
 }
 
-const releaseAuthoritativeYDoc = (noteId) => {
-    activeYjsDocs.delete(String(noteId))
-    loadingYjsDocs.delete(String(noteId))
+const releaseAuthoritativeYDoc = async (noteId) => {
+    const normalizedNoteId = String(noteId)
+    const activeEntry = activeYjsDocs.get(normalizedNoteId)
+    const loadingEntry = loadingYjsDocs.get(normalizedNoteId)
+
+    await waitForYjsPersistence(normalizedNoteId)
+
+    if (activeYjsDocs.get(normalizedNoteId) === activeEntry) {
+        activeYjsDocs.delete(normalizedNoteId)
+    }
+
+    if (loadingYjsDocs.get(normalizedNoteId) === loadingEntry) {
+        loadingYjsDocs.delete(normalizedNoteId)
+    }
 }
 
 export {
     applyAndPersistYjsUpdate,
     getAuthoritativeYDocEntry,
     getEncodedYjsState,
-    releaseAuthoritativeYDoc
+    releaseAuthoritativeYDoc,
+    waitForYjsPersistence
 }

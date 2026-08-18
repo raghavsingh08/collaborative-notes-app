@@ -7,15 +7,18 @@ const getAllowedOrigins = () => {
         .filter(Boolean)
 }
 
-const corsOrigin = (origin, callback) => {
-    const allowedOrigins = getAllowedOrigins()
+const isAllowedOrigin = (origin) => getAllowedOrigins().includes(origin)
 
-    if (!origin || allowedOrigins.includes(origin)) {
+const corsOrigin = (origin, callback) => {
+    if (!origin || isAllowedOrigin(origin)) {
         callback(null, true)
         return
     }
 
-    callback(new Error("Not allowed by CORS"))
+    const error = new Error("Origin is not allowed")
+    error.statusCode = 403
+    error.code = "CORS_ORIGIN_NOT_ALLOWED"
+    callback(error)
 }
 
 const corsOptions = {
@@ -24,5 +27,7 @@ const corsOptions = {
 }
 
 export {
-    corsOptions
+    corsOptions,
+    getAllowedOrigins,
+    isAllowedOrigin
 }

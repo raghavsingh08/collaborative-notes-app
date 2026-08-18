@@ -291,22 +291,37 @@ npm run dev
 
 # Environment Variables
 
-Create a `.env` file inside the backend directory.
-
-Example:
+Create a `.env` file inside `backend` for local development. Do not commit it.
 
 ```env
-PORT=5000
-
-MONGODB_URI=your_database_uri
-
-JWT_SECRET=your_secret
-
-CLIENT_URL=http://localhost:5173
+NODE_ENV=development
+PORT=8000
+MONGODB_URI=your_mongodb_connection_uri
+ACCESS_TOKEN_SECRET=generate_a_long_random_secret
+ACCESS_TOKEN_EXPIRY=1d
+CORS_ORIGIN=http://localhost:5173
 ```
 
----
+The frontend reads public Vite variables at build time:
 
+```env
+VITE_API_URL=https://api.example.com/api/v1
+VITE_SOCKET_URL=https://api.example.com
+```
+
+Never use `VITE_*` for secrets.
+
+## Production Deployment
+
+- Frontend: Vercel static deployment. Build from `frontend` with `npm ci && npm run build`; its existing rewrite supports React Router deep links.
+- Backend: one Render Node web service rooted at `backend`, built with `npm ci`, and started with `npm start`.
+- Database: MongoDB Atlas. Configure a least-privilege database user, network access, backups, and monitoring.
+- Render variables: set `NODE_ENV=production`, `MONGODB_URI`, `ACCESS_TOKEN_SECRET`, `ACCESS_TOKEN_EXPIRY`, and the exact Vercel/custom frontend origins in `CORS_ORIGIN`.
+- Vercel variables: set `VITE_API_URL` to the Render API URL plus `/api/v1`, and `VITE_SOCKET_URL` to the Render origin. Redeploy the frontend after changing either value.
+- Configure Render's health check path as `/health`; `/ready` confirms MongoDB readiness.
+- This release requires exactly one backend instance. Do not enable Render horizontal autoscaling: Socket.IO rooms, active Y.Docs, and presence are process-local. Redis is not required for V1.
+
+---
 # Screenshots
 
 Add screenshots or GIF demonstrations here.

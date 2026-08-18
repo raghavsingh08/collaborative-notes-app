@@ -370,6 +370,11 @@ const getEncodedYjsState = async (note) => {
     return encodedState
 }
 
+const awaitAllPendingYjsPersistence = async () => {
+    while (yjsPersistenceChains.size > 0) {
+        await Promise.all(Array.from(yjsPersistenceChains.values()))
+    }
+}
 const releaseAuthoritativeYDoc = async (noteId) => {
     const normalizedNoteId = String(noteId)
     const activeEntry = activeYjsDocs.get(normalizedNoteId)
@@ -391,5 +396,6 @@ export {
     getAuthoritativeYDocEntry,
     getEncodedYjsState,
     releaseAuthoritativeYDoc,
-    waitForYjsPersistence
+    waitForYjsPersistence,
+    awaitAllPendingYjsPersistence
 }
